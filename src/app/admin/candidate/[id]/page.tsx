@@ -14,8 +14,11 @@ export const dynamic = "force-dynamic";
 
 type DiscardedAttempt = {
   id: string;
+  started_at: string;
   submitted_at: string | null;
   active_seconds: number | null;
+  reason?: "restart" | "switched_to_practice";
+  discarded_at?: string;
   clip: { title: string } | null;
   score: { total_score: number | null } | { total_score: number | null }[] | null;
 };
@@ -43,11 +46,11 @@ export default async function CandidateDetail({
     .eq("candidate_id", id)
     .order("started_at");
 
-  const { data: restarts } = await getSupabaseAdmin()
+  const { data: archives } = await getSupabaseAdmin()
     .from("trial_assessments")
     .select("role,restarted_at,discarded_attempts")
     .eq("candidate_id", id)
-    .not("restarted_at", "is", null);
+    .not("discarded_attempts", "is", null);
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-12">
@@ -57,26 +60,35 @@ export default async function CandidateDetail({
         <p className="mt-1 text-slate-600">{candidate.email}</p>
       </div>
 
-      {(restarts ?? []).map((restart) => {
-        const discarded = (restart.discarded_attempts ?? []) as DiscardedAttempt[];
+      {(archives ?? []).map((archive) => {
+        const discarded = (archive.discarded_attempts ?? []) as DiscardedAttempt[];
         return (
-          <section key={restart.role} className="card mt-8 border-l-4 border-l-amber-400 p-6">
-            <p className="eyebrow">{restart.role === "qa" ? "QA reviewer" : "Annotator"} · Restarted</p>
+          <section key={archive.role} className="card mt-8 border-l-4 border-l-amber-400 p-6">
+            <p className="eyebrow">{archive.role === "qa" ? "QA reviewer" : "Annotator"} · Discarded attempts</p>
             <h2 className="mt-1 text-lg font-medium tracking-tight">
-              Used their one restart on {new Date(restart.restarted_at!).toLocaleString()}
+              {archive.restarted_at
+                ? `Used their one restart on ${new Date(archive.restarted_at).toLocaleString()}`
+                : "Left a scored clip to do the practice round"}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              This in-progress clip attempt was discarded and the clip restarted. The candidate had already heard some of this audio, so treat the second attempt with that in mind.
+              These in-progress attempts were cleared and started again. The candidate had already heard some of this audio, so treat their later attempt with that in mind.
             </p>
             <ul className="mt-4 divide-y divide-brand-100 text-sm">
               {discarded.map((attempt) => {
                 const score = Array.isArray(attempt.score) ? attempt.score[0] : attempt.score;
+                const minutes = attempt.discarded_at
+                  ? (Date.parse(attempt.discarded_at) - Date.parse(attempt.started_at)) / 60000
+                  : (attempt.active_seconds ?? 0) / 60;
                 return (
-                  <li key={attempt.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                    <span className="font-medium">{attempt.clip?.title ?? "Clip"}</span>
+                  <li key={`${attempt.id}-${attempt.reason ?? "restart"}`} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                    <span>
+                      <span className="font-medium">{attempt.clip?.title ?? "Clip"}</span>
+                      <span className="ml-2 text-slate-500">
+                        {attempt.reason === "switched_to_practice" ? "Switched to practice" : "Restarted"}
+                      </span>
+                    </span>
                     <span className="flex items-center gap-4 text-slate-600">
-                      <span>{attempt.submitted_at ? "Submitted" : "In progress"}</span>
-                      <span>{Math.round((attempt.active_seconds ?? 0) / 60)} min</span>
+                      <span>{Math.max(0, Math.round(minutes))} min in</span>
                       <ScorePill value={score?.total_score} />
                     </span>
                   </li>

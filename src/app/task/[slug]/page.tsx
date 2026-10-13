@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { AudioTask } from "@/components/audio-task";
 import { Progress } from "@/components/progress";
+import { PracticeSwitchButton } from "@/components/practice-switch-button";
 import { RestartButton } from "@/components/restart-button";
 import { getCandidate } from "@/lib/auth";
 import { isPracticeClip, PRACTICE_SORT_ORDER, realClipNumber } from "@/lib/practice";
@@ -49,6 +50,23 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
     redirect(nextClip ? `/task/${nextClip.slug}` : `/done?role=${clip.role}`);
   }
 
+  const { data: otherAttempts } = await supabase
+    .from("trial_attempts")
+    .select("submitted_at,clip:trial_clips(slug,sort_order)")
+    .eq("assessment_id", assessment.id)
+    .neq("clip_id", clip.id);
+  const others = (otherAttempts ?? []).flatMap((item) => {
+    const otherClip = Array.isArray(item.clip) ? item.clip[0] : item.clip;
+    return otherClip ? [{ submitted: Boolean(item.submitted_at), ...otherClip }] : [];
+  });
+  if (practice) {
+    // A scored clip's timer keeps running, so practice is reached via the switch button, which resets it.
+    const inProgress = others.find((item) => !item.submitted && !isPracticeClip(item.sort_order));
+    if (inProgress) redirect(`/task/${inProgress.slug}`);
+  }
+  const practiceDone = others.some((item) => item.submitted && isPracticeClip(item.sort_order));
+  const offerPractice = !practice && realClipNumber(clip.sort_order) === 1 && !practiceDone;
+
   if (!practice) {
     const { data: priorClips } = await supabase
       .from("trial_clips")
@@ -94,9 +112,10 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
         mode={clip.role}
         initialTranscript={clip.role === "qa" ? clip.qa_source_transcript ?? "" : ""}
       />
-      {!practice && assessment.restart_count === 0 && (
-        <div className="mt-10 flex justify-center">
-          <RestartButton role={clip.role} slug={clip.slug} />
+      {!practice && (offerPractice || assessment.restart_count === 0) && (
+        <div className="mt-10 flex flex-wrap items-start justify-center gap-6">
+          {offerPractice && <PracticeSwitchButton role={clip.role} />}
+          {assessment.restart_count === 0 && <RestartButton role={clip.role} slug={clip.slug} />}
         </div>
       )}
     </main>

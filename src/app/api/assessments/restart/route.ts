@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
   const { data: assessment } = await supabase
     .from("trial_assessments")
-    .select("id,restart_count")
+    .select("id,restart_count,discarded_attempts")
     .eq("candidate_id", candidate.id)
     .eq("role", input.data.role)
     .maybeSingle();
@@ -47,12 +47,16 @@ export async function POST(request: Request) {
   }
 
   // Claim the restart before deleting anything so a double click can't use it twice.
+  const restartedAt = new Date().toISOString();
   const { data: claimed, error: claimError } = await supabase
     .from("trial_assessments")
     .update({
       restart_count: 1,
-      restarted_at: new Date().toISOString(),
-      discarded_attempts: attempts,
+      restarted_at: restartedAt,
+      discarded_attempts: [
+        ...((assessment.discarded_attempts as unknown[] | null) ?? []),
+        ...attempts.map((attempt) => ({ ...attempt, reason: "restart", discarded_at: restartedAt })),
+      ],
     })
     .eq("id", assessment.id)
     .eq("restart_count", 0)
