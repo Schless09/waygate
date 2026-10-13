@@ -18,7 +18,7 @@ export default function RootLayout({
       <body className="min-h-full">
         <header className="mx-auto flex w-full max-w-6xl items-center gap-2.5 px-6 pt-6">
           <span className="size-7 rounded-lg bg-[conic-gradient(from_200deg,var(--color-brand-300),var(--color-brand-700),var(--color-brand-400))] shadow-sm shadow-brand-600/30" />
-          <span className="text-lg font-semibold tracking-tight">Waygate</span>
+          <span className="text-lg font-semibold tracking-tight">Recruitcha Labs</span>
           <span className="text-lg font-light text-slate-500">Assessments</span>
         </header>
         {children}
