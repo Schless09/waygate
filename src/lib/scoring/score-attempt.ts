@@ -8,7 +8,20 @@ import {
   CLAUDE_MODEL,
   QA_SCORE_WEIGHTS,
 } from "./config";
-import { paceScore, wordErrorRate } from "./deterministic";
+import type { ReferenceUtterance } from "@/lib/types";
+import { paceScore, transcriptCoverage, trimToReferenceWindow, wordErrorRate } from "./deterministic";
+
+// Reference speaker IDs are arbitrary corpus labels; relabel them A, B, C, D in
+// order of first appearance so they match the convention candidates are told to use.
+function relabelByFirstAppearance(utterances: ReferenceUtterance[]) {
+  const labels = new Map<string, string>();
+  return [...utterances]
+    .sort((a, b) => a.begin_time - b.begin_time)
+    .map((utterance) => {
+      if (!labels.has(utterance.speaker)) labels.set(utterance.speaker, String.fromCharCode(65 + labels.size));
+      return { ...utterance, speaker: labels.get(utterance.speaker)! };
+    });
+}
 
 const claudeResultSchema = z.object({
   speaker_mapping: z.record(z.string(), z.string()),
@@ -57,7 +70,8 @@ Assessment role: ${role}
 Reviewer notes (QA only): ${JSON.stringify(review)}
 Seeded QA errors (QA only): ${JSON.stringify(errorKey)}
 
-Evaluate speaker attribution. Find the best mapping from candidate labels to reference labels, estimate the percentage of words assigned to the correct speaker, verify the speaker count, and count missed and false turn changes.
+Evaluate speaker attribution. Speaker letters are arbitrary: find the best one-to-one mapping from candidate labels to reference labels and score attribution after applying it. A consistent relabeling (for example the candidate's C is the reference's D) is NOT an error and must not be penalized or listed as a weakness. Estimate the percentage of words assigned to the correct speaker after mapping, verify the speaker count, and count missed and false turn changes.
+Clean verbatim is required, so omitted fillers (um, uh, mm-hmm) are correct and must not be counted as missed words or turns. Only short back-channel turns that contain real words (for example "okay", "yeah") count as missed turns.
 ${roleGuidance}
 
 Return exactly this JSON shape:
@@ -100,7 +114,16 @@ export async function scoreAttempt(attemptId: string) {
     : attempt.assessment;
   if (!clip) throw new Error("Clip not found");
 
-  const wer = wordErrorRate(clip.reference_text, attempt.transcript ?? "");
+  const utterances = (clip.reference_utterances ?? []) as ReferenceUtterance[];
+  const fullTranscript = attempt.transcript ?? "";
+  const trimmedTranscript = trimToReferenceWindow(fullTranscript, utterances);
+  // Trimming only removes speech the reference omits; if a candidate's timestamps
+  // are offset it would drop real work instead, so keep whichever version scores better.
+  const trimmedWer = wordErrorRate(clip.reference_text, trimmedTranscript);
+  const fullWer = wordErrorRate(clip.reference_text, fullTranscript);
+  const wer = Math.min(trimmedWer, fullWer);
+  const candidateTranscript = trimmedWer <= fullWer ? trimmedTranscript : fullTranscript;
+  const coverage = transcriptCoverage(clip.reference_text, candidateTranscript);
   const initialQaWer =
     assessment?.role === "qa" && clip.qa_source_transcript
       ? wordErrorRate(clip.reference_text, clip.qa_source_transcript)
@@ -116,7 +139,7 @@ export async function scoreAttempt(attemptId: string) {
       attempt_id: attemptId,
       wer,
       transcription_score: transcriptionScore,
-      pace_score: pace.score,
+      pace_score: Math.min(pace.score, Math.round(coverage * 100)),
       pace_ratio: pace.ratio,
       error: null,
     },
@@ -125,8 +148,8 @@ export async function scoreAttempt(attemptId: string) {
 
   try {
     const feedback = await evaluateWithClaude(
-      clip.reference_utterances,
-      attempt.transcript ?? "",
+      relabelByFirstAppearance(utterances),
+      candidateTranscript,
       assessment?.role ?? "annotator",
       attempt.qa_review,
       clip.qa_error_key,
@@ -152,25 +175,37 @@ export async function scoreAttempt(attemptId: string) {
             format_score: formatScore,
             format_notes: `${feedback.format_notes} Reviewer notes contained fewer than eight words, so the QA review score was capped at 5.`,
           };
+    // Speaker, format, and pace credit can't exceed the share of the clip actually transcribed.
+    const coverageCap = Math.round(coverage * 100);
+    const scoredFeedback =
+      gradedFeedback.speaker_score > coverageCap || gradedFeedback.format_score > coverageCap
+        ? {
+            ...gradedFeedback,
+            speaker_score: Math.min(gradedFeedback.speaker_score, coverageCap),
+            format_score: Math.min(gradedFeedback.format_score, coverageCap),
+            format_notes: `${gradedFeedback.format_notes} The transcript covers about ${coverageCap}% of the clip, so speaker and format scores were capped at ${coverageCap}.`,
+          }
+        : gradedFeedback;
+    const paceCredit = Math.min(pace.score, coverageCap);
     const weights =
       role === "qa" ? QA_SCORE_WEIGHTS : ANNOTATOR_SCORE_WEIGHTS;
     const total =
       transcriptionScore * weights.transcription +
-      gradedFeedback.speaker_score * weights.speaker +
-      pace.score * weights.pace +
-      gradedFeedback.format_score * weights.format;
+      scoredFeedback.speaker_score * weights.speaker +
+      paceCredit * weights.pace +
+      scoredFeedback.format_score * weights.format;
 
     const { error: saveError } = await supabase.from("trial_scores").upsert(
       {
         attempt_id: attemptId,
         wer,
         transcription_score: transcriptionScore,
-        speaker_score: gradedFeedback.speaker_score,
-        pace_score: pace.score,
+        speaker_score: scoredFeedback.speaker_score,
+        pace_score: paceCredit,
         pace_ratio: pace.ratio,
-        format_score: gradedFeedback.format_score,
+        format_score: scoredFeedback.format_score,
         total_score: total,
-        claude_feedback: gradedFeedback,
+        claude_feedback: scoredFeedback,
         scored_at: new Date().toISOString(),
         error: null,
       },
