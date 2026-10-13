@@ -4,6 +4,9 @@ export type Telemetry = {
   rewindCount: number;
   playbackSpeeds: number[];
   blurCount: number;
+  pasteCount: number;
+  pastedChars: number;
+  quizAnswers?: number[];
 };
 
 export type ReferenceUtterance = {

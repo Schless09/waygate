@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { quizStorageKey } from "@/lib/quiz";
 import type { ClipSummary, Telemetry } from "@/lib/types";
 
 type Attempt = { id: string; started_at: string; submitted_at: string | null } | null;
@@ -35,6 +36,8 @@ export function AudioTask({
     rewindCount: 0,
     playbackSpeeds: [1],
     blurCount: 0,
+    pasteCount: 0,
+    pastedChars: 0,
   });
   const playStartedRef = useRef<number | null>(null);
   const storageKey = `waygate-transcript-${clip.slug}`;
@@ -136,7 +139,7 @@ export function AudioTask({
       if (event.code === "Space") {
         event.preventDefault();
         togglePlay();
-      } else if (event.key === "ArrowLeft") {
+      } else if (event.key === "ArrowLeft" || event.key.toLowerCase() === "b") {
         event.preventDefault();
         seekBy(-5);
       } else if (event.key.toLowerCase() === "t") {
@@ -171,6 +174,10 @@ export function AudioTask({
     flushPlayTime();
     setBusy(true);
     setError("");
+    let quizAnswers: number[] | undefined;
+    try {
+      quizAnswers = JSON.parse(localStorage.getItem(quizStorageKey(mode)) ?? "null") ?? undefined;
+    } catch {}
     const response = await fetch(`/api/clips/${clip.slug}/submit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -180,6 +187,7 @@ export function AudioTask({
         telemetry: {
           ...telemetryRef.current,
           totalPlayTime: Math.round(telemetryRef.current.totalPlayTime * 10) / 10,
+          quizAnswers,
         },
       }),
     });
@@ -278,7 +286,7 @@ export function AudioTask({
             <h3 className="mt-7 font-semibold">Keyboard shortcuts</h3>
             <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm text-slate-700">
               <dt className="font-mono">Ctrl/⌘ + Space</dt><dd>Play or pause</dd>
-              <dt className="font-mono">Ctrl/⌘ + Left Arrow</dt><dd>Skip back 5 seconds</dd>
+              <dt className="font-mono">Ctrl/⌘ + B or Left Arrow</dt><dd>Skip back 5 seconds</dd>
               <dt className="font-mono">Ctrl/⌘ + T</dt><dd>Insert the current timestamp</dd>
             </dl>
             <p className="mt-8 text-xs leading-5 text-slate-500">
@@ -349,12 +357,16 @@ export function AudioTask({
       <div className="mt-5">
         <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
           <span>{mode === "qa" ? "Correct the provided transcript" : "One speaker turn per line"}</span>
-          <span>Ctrl/⌘ + Space play · Ctrl/⌘ + Left Arrow back · Ctrl/⌘ + T timestamp</span>
+          <span>Ctrl/⌘ + Space play · Ctrl/⌘ + B back · Ctrl/⌘ + T timestamp</span>
         </div>
         <textarea
           ref={textareaRef}
           value={transcript}
           onChange={(event) => setTranscript(event.target.value)}
+          onPaste={(event) => {
+            telemetryRef.current.pasteCount += 1;
+            telemetryRef.current.pastedChars += event.clipboardData.getData("text").length;
+          }}
           spellCheck={false}
           placeholder="[00:00] Speaker A: Begin typing here…"
           className="h-[420px] w-full resize-y rounded-xl border border-slate-300 bg-white p-5 font-mono text-sm leading-6 outline-none focus:border-slate-700"

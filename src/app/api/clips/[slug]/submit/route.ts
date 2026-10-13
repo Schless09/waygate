@@ -10,6 +10,9 @@ const telemetrySchema = z.object({
   rewindCount: z.number().int().min(0),
   playbackSpeeds: z.array(z.number().min(0.5).max(2)).max(20),
   blurCount: z.number().int().min(0),
+  pasteCount: z.number().int().min(0).default(0),
+  pastedChars: z.number().int().min(0).default(0),
+  quizAnswers: z.array(z.number().int().min(-1).max(3)).max(10).optional(),
 });
 
 const inputSchema = z.object({

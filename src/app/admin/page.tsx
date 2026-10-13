@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AdminLogin } from "@/components/admin-actions";
 import { isAdmin } from "@/lib/auth";
+import { effortFlags, quizScore } from "@/lib/quality-checks";
+import type { Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +10,8 @@ export const dynamic = "force-dynamic";
 type AttemptRow = {
   active_seconds: number | null;
   submitted_at: string | null;
-  clip: { sort_order: number } | { sort_order: number }[] | null;
+  telemetry: Partial<Telemetry> | null;
+  clip: { sort_order: number; duration_seconds: number } | { sort_order: number; duration_seconds: number }[] | null;
   score: { total_score: number | null; error: string | null; scored_at: string | null } | { total_score: number | null; error: string | null; scored_at: string | null }[] | null;
 };
 
@@ -35,7 +38,7 @@ export default async function AdminPage({
 
   const { data: assessments, error } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,clip:trial_clips(sort_order),score:trial_scores(total_score,error,scored_at))")
+    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,telemetry,clip:trial_clips(sort_order,duration_seconds),score:trial_scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -52,10 +55,20 @@ export default async function AdminPage({
         : attempts.some((attempt) => attempt.submitted_at)
           ? "scoring"
           : "in progress";
+    const quiz = attempts.map((attempt) => quizScore(attempt.telemetry?.quizAnswers)).find(Boolean) ?? null;
+    const flagCount = attempts
+      .filter((attempt) => attempt.submitted_at)
+      .reduce(
+        (sum, attempt) =>
+          sum + effortFlags(attempt.telemetry, one(attempt.clip)?.duration_seconds ?? 0, attempt.active_seconds).length,
+        0,
+      );
     return {
       ...assessment,
       candidate,
       attempts,
+      quiz,
+      flagCount,
       overall: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
       status,
     };
@@ -80,7 +93,7 @@ export default async function AdminPage({
       <div className="mt-8 overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Flags</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((assessment) => {
@@ -98,6 +111,8 @@ export default async function AdminPage({
                   <td className="p-4">{one(third?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
                   <td className="p-4 font-semibold">{assessment.overall?.toFixed(1) ?? "—"}</td>
                   <td className="p-4 text-slate-600">{[first, second, third].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
+                  <td className="p-4">{assessment.quiz ? `${assessment.quiz.correct}/${assessment.quiz.total}` : "—"}</td>
+                  <td className={`p-4 ${assessment.flagCount ? "font-semibold text-amber-700" : "text-slate-400"}`}>{assessment.flagCount || "—"}</td>
                   <td className="p-4 capitalize">{assessment.status}</td>
                 </tr>
               );
