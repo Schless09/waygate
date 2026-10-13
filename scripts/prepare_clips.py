@@ -75,6 +75,8 @@ def window_metrics(
         str(left["speaker_id"]) != str(right["speaker_id"])
         for left, right in zip(included, included[1:])
     )
+    if turns < 30:
+        return None
     overlaps = sum(
         max(0.0, float(left["end_time"]) - float(right["begin_time"]))
         for left, right in zip(included, included[1:])
