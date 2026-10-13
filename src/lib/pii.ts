@@ -94,6 +94,7 @@ export type PiiResult = {
 
 // Missing PII is the costly error for clients, so recall carries most of the weight.
 const RECALL_WEIGHT = 0.75;
+const MAX_TAG_SPILL = 2;
 
 export function scorePii(document: PiiDocument, entities: PiiEntity[], tags: PiiSpan[]): PiiResult {
   const tagAt = new Map<number, PiiCategory>();
@@ -101,16 +102,21 @@ export function scorePii(document: PiiDocument, entities: PiiEntity[], tags: Pii
     for (let index = tag.start; index <= tag.end; index += 1) tagAt.set(index, tag.category);
   }
   const goldTokens = new Set<number>();
+  for (const entity of entities) {
+    for (let index = entity.start; index <= entity.end; index += 1) goldTokens.add(index);
+  }
   let credit = 0;
   const results = entities.map((entity): PiiEntityResult => {
+    // A tag only finds an item if it stays close to it, so one huge tag can't sweep up everything.
+    const nearbyTags = tags.filter((tag) => {
+      const overlap = Math.min(tag.end, entity.end) - Math.max(tag.start, entity.start) + 1;
+      return overlap > 0 && tag.end - tag.start + 1 - overlap <= MAX_TAG_SPILL;
+    });
     let covered = 0;
-    let categoryMatch = false;
     for (let index = entity.start; index <= entity.end; index += 1) {
-      goldTokens.add(index);
-      const category = tagAt.get(index);
-      if (category) covered += 1;
-      if (category === entity.category) categoryMatch = true;
+      if (nearbyTags.some((tag) => index >= tag.start && index <= tag.end)) covered += 1;
     }
+    const categoryMatch = nearbyTags.some((tag) => tag.category === entity.category);
     const length = entity.end - entity.start + 1;
     if (covered === length) {
       credit += categoryMatch ? 1 : 0.5;
