@@ -21,19 +21,19 @@ export default async function AssessmentsPage() {
       <p className="eyebrow">Candidate assessments</p>
       <h1 className="mt-3 text-4xl font-medium tracking-tight">Choose a role</h1>
       <p className="mt-3 max-w-2xl text-slate-600">
-        You may complete either or both assessments. Each role uses three different audio clips and can be attempted once.
+        You may complete either or both assessments. Each role has two scored clips, plus an optional practice clip, and can be attempted once.
       </p>
       <div className="mt-8 grid gap-6 sm:grid-cols-2">
         <RoleCard
           role="annotator"
           title="Transcription Annotator"
-          description="Create accurate, speaker-attributed transcripts from three meeting clips."
+          description="Create accurate, speaker-attributed transcripts from two meeting clips."
           status={status("annotator")}
         />
         <RoleCard
           role="qa"
           title="QA Reviewer"
-          description="Review and correct three intentionally flawed transcripts, then explain the most important issues."
+          description="Review and correct two intentionally flawed transcripts, then explain the most important issues."
           status={status("qa")}
         />
       </div>

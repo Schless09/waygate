@@ -5,6 +5,7 @@ import { RescoreButton } from "@/components/admin-actions";
 import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
 import { integrityReport } from "@/lib/integrity";
+import { isPracticeClip, realClipNumber } from "@/lib/practice";
 import { quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -68,7 +69,7 @@ export default async function CandidateDetail({
           return (
             <section key={attempt.id} className="card p-6 sm:p-8">
               <div className="flex items-center justify-between gap-4">
-                <div><p className="eyebrow">{assessment?.role === "qa" ? "QA reviewer" : "Annotator"} · Clip {clip?.sort_order}</p><h2 className="mt-1 text-xl font-medium tracking-tight">{clip?.title}</h2></div>
+                <div><p className="eyebrow">{assessment?.role === "qa" ? "QA reviewer" : "Annotator"} · {clip && isPracticeClip(clip.sort_order) ? "Practice (not counted)" : `Clip ${realClipNumber(clip?.sort_order ?? 0)}`}</p><h2 className="mt-1 text-xl font-medium tracking-tight">{clip?.title}</h2></div>
                 <div className="ml-auto text-right"><p className="text-xs text-slate-500">Total</p><div className="mt-1 text-lg"><ScorePill value={score?.total_score} /></div></div>
                 {attempt.submitted_at && <RescoreButton attemptId={attempt.id} />}
               </div>

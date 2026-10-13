@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AudioLines, BookOpen, CloudCheck, Pause, Play, RotateCcw, RotateCw, Send, X } from "lucide-react";
 import { CrosstalkExample } from "@/components/crosstalk-example";
 import { Shortcuts } from "@/components/shortcuts";
+import { REAL_CLIP_COUNT } from "@/lib/practice";
 import { quizStorageKey } from "@/lib/quiz";
 import type { ClipSummary, Telemetry, TranscriptSnapshot } from "@/lib/types";
 
@@ -31,12 +32,14 @@ export function AudioTask({
   clip,
   initialAttempt,
   step,
+  practice = false,
   mode,
   initialTranscript,
 }: {
   clip: ClipSummary;
   initialAttempt: Attempt;
   step: number;
+  practice?: boolean;
   mode: "annotator" | "qa";
   initialTranscript: string;
 }) {
@@ -132,6 +135,7 @@ export function AudioTask({
     playRunStartedRef.current = restart ? performance.now() : null;
   }, []);
 
+  const label = practice ? "Practice round · not scored" : `Clip ${step} of ${REAL_CLIP_COUNT}`;
   const startedAt = attempt?.started_at;
   const takeSnapshot = useCallback(() => {
     if (!startedAt) return;
@@ -258,7 +262,10 @@ export function AudioTask({
       setError("Add reviewer notes describing the important errors you found.");
       return;
     }
-    if (!window.confirm("Submit this transcript? You will not be able to edit it afterward.")) return;
+    const confirmation = practice
+      ? "Submit your practice transcript and see your feedback?"
+      : "Submit this transcript? You will not be able to edit it afterward.";
+    if (!window.confirm(confirmation)) return;
     flushPlayTime();
     endPlayRun(!audioRef.current?.paused);
     takeSnapshot();
@@ -293,7 +300,7 @@ export function AudioTask({
     try {
       localStorage.removeItem(storageKey);
     } catch {}
-    router.push(body.complete ? `/done?role=${mode}` : `/task/${body.nextSlug}`);
+    router.push(body.practice ? `/practice?role=${mode}` : body.complete ? `/done?role=${mode}` : `/task/${body.nextSlug}`);
     router.refresh();
   }
 
@@ -303,12 +310,16 @@ export function AudioTask({
         <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
           <AudioLines className="size-7" />
         </span>
-        <p className="eyebrow mt-5">Clip {step} of 3</p>
+        <p className="eyebrow mt-5">{label}</p>
         <h1 className="mt-2 text-2xl font-medium tracking-tight">{clip.title}</h1>
-        <p className="mt-3 text-slate-600">Your server-timed attempt begins when you click start.</p>
+        <p className="mt-3 text-slate-600">
+          {practice
+            ? "Get comfortable with the player, shortcuts, and format. This round doesn't count toward your result, and you'll see feedback right after you submit."
+            : "Your server-timed attempt begins when you click start."}
+        </p>
         {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
         <button onClick={start} disabled={busy} className="btn-primary mt-7 px-7">
-          {busy ? "Starting…" : <><Play className="size-4 fill-current" /> Start Clip {step}</>}
+          {busy ? "Starting…" : <><Play className="size-4 fill-current" /> {practice ? "Start practice" : `Start Clip ${step}`}</>}
         </button>
       </section>
     );
@@ -318,7 +329,7 @@ export function AudioTask({
     <section>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="eyebrow">Clip {step} of 3</p>
+          <p className="eyebrow">{label}</p>
           <h1 className="mt-1 text-2xl font-medium tracking-tight">{clip.title}</h1>
         </div>
         <div className="flex items-center gap-2">

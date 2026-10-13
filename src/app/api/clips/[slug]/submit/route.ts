@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCandidate } from "@/lib/auth";
 import { scoreAttempt } from "@/lib/scoring/score-attempt";
+import { isPracticeClip, PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const telemetrySchema = z.object({
@@ -95,15 +96,23 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Mark completion with a simple count query that avoids exposing reference data.
-  const { count: clipCount } = await supabase
+  if (isPracticeClip(clip.sort_order)) {
+    after(() => scoreAttempt(attempt.id));
+    return NextResponse.json({ ok: true, practice: true });
+  }
+
+  const { data: realClips } = await supabase
     .from("trial_clips")
-    .select("id", { count: "exact", head: true })
-    .eq("role", clip.role);
+    .select("id")
+    .eq("role", clip.role)
+    .gt("sort_order", PRACTICE_SORT_ORDER);
+  const realClipIds = (realClips ?? []).map((item) => item.id);
+  const clipCount = realClipIds.length;
   const { count: submittedCount } = await supabase
     .from("trial_attempts")
     .select("id", { count: "exact", head: true })
     .eq("assessment_id", assessment.id)
+    .in("clip_id", realClipIds)
     .not("submitted_at", "is", null);
   if (clipCount && submittedCount === clipCount) {
     await supabase

@@ -2,21 +2,32 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight, GraduationCap } from "lucide-react";
 import { QUIZ_QUESTIONS, quizStorageKey } from "@/lib/quiz";
 
-export function GuidelineQuiz({ role, firstClipHref }: { role: string; firstClipHref: string }) {
+export function GuidelineQuiz({
+  role,
+  firstClipHref,
+  practiceHref,
+  practiceDone,
+}: {
+  role: string;
+  firstClipHref: string;
+  practiceHref: string;
+  practiceDone: boolean;
+}) {
   const router = useRouter();
   const [answers, setAnswers] = useState<number[]>(() => QUIZ_QUESTIONS.map(() => -1));
   const [agreed, setAgreed] = useState(false);
   const complete = answers.every((answer) => answer >= 0);
 
-  function continueToClip() {
+  function go(href: string) {
     try {
       localStorage.setItem(quizStorageKey(role), JSON.stringify(answers));
     } catch {
       // The quiz is optional evidence; storage failures should not block the assessment.
     }
-    router.push(firstClipHref);
+    router.push(href);
   }
 
   return (
@@ -63,13 +74,25 @@ export function GuidelineQuiz({ role, firstClipHref }: { role: string; firstClip
           anyone else. I understand that using them will disqualify my submission.
         </span>
       </label>
-      <button
-        onClick={continueToClip}
-        disabled={!complete || !agreed}
-        className="btn-primary mt-4 w-full"
-      >
-        {!complete ? "Answer all questions to continue" : !agreed ? "Accept the agreement to continue" : "Continue to Clip 1"}
-      </button>
+      {!complete || !agreed ? (
+        <button disabled className="btn-primary mt-4 w-full">
+          {!complete ? "Answer all questions to continue" : "Accept the agreement to continue"}
+        </button>
+      ) : (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <button onClick={() => go(practiceHref)} className="btn-secondary py-3 text-base">
+            <GraduationCap className="size-4" /> {practiceDone ? "View practice feedback" : "Try a practice clip first"}
+          </button>
+          <button onClick={() => go(firstClipHref)} className="btn-primary">
+            Start the assessment <ArrowRight className="size-4" />
+          </button>
+        </div>
+      )}
+      {complete && agreed && !practiceDone && (
+        <p className="mt-3 text-center text-xs text-slate-500">
+          The practice clip is optional and doesn&apos;t count toward your result. You&apos;ll get feedback right after it.
+        </p>
+      )}
     </section>
   );
 }

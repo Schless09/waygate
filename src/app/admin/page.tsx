@@ -4,6 +4,7 @@ import { AdminLogin } from "@/components/admin-actions";
 import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
 import { integrityReport } from "@/lib/integrity";
+import { isPracticeClip, PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { quizScore } from "@/lib/quality-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -57,7 +58,9 @@ export default async function AdminPage({
   if (error) throw error;
 
   const rows = (assessments ?? []).map((assessment) => {
-    const attempts = (assessment.attempts ?? []) as AttemptRow[];
+    const allAttempts = (assessment.attempts ?? []) as AttemptRow[];
+    const attempts = allAttempts.filter((attempt) => !isPracticeClip(one(attempt.clip)?.sort_order ?? 0));
+    const practice = allAttempts.find((attempt) => isPracticeClip(one(attempt.clip)?.sort_order ?? 0));
     const candidate = one(assessment.candidate);
     const scores = attempts
       .map((attempt) => one(attempt.score)?.total_score)
@@ -69,7 +72,7 @@ export default async function AdminPage({
         : attempts.some((attempt) => attempt.submitted_at)
           ? "scoring"
           : "in progress";
-    const quiz = attempts.map((attempt) => quizScore(attempt.telemetry?.quizAnswers)).find(Boolean) ?? null;
+    const quiz = allAttempts.map((attempt) => quizScore(attempt.telemetry?.quizAnswers)).find(Boolean) ?? null;
     const integrityScores = attempts
       .filter((attempt) => attempt.submitted_at)
       .map((attempt) => {
@@ -89,6 +92,7 @@ export default async function AdminPage({
       ...assessment,
       candidate,
       attempts,
+      practice,
       quiz,
       integrity,
       overall: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
@@ -116,24 +120,23 @@ export default async function AdminPage({
       <div className="card mt-8 max-h-[75vh] overflow-auto">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-b border-brand-100 bg-brand-50/95 text-xs uppercase tracking-wide text-brand-800 backdrop-blur">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Integrity</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Practice</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Integrity</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((assessment) => {
               const byClip = (order: number) => assessment.attempts.find((attempt) => one(attempt.clip)?.sort_order === order);
-              const first = byClip(1);
-              const second = byClip(2);
-              const third = byClip(3);
+              const first = byClip(PRACTICE_SORT_ORDER + 1);
+              const second = byClip(PRACTICE_SORT_ORDER + 2);
               return (
                 <tr key={assessment.id} className="transition-colors hover:bg-brand-50/50">
                   <td className="p-4"><Link href={`/admin/candidate/${assessment.candidate?.id}`} className="font-medium underline-offset-2 hover:underline">{assessment.candidate?.name}</Link><span className="block text-slate-500">{assessment.candidate?.email}</span></td>
                   <td className="p-4 capitalize">{assessment.role === "qa" ? "QA reviewer" : "Annotator"}</td>
                   <td className="p-4 text-slate-600">{new Date(assessment.created_at).toLocaleDateString()}</td>
+                  <td className="p-4 opacity-60"><ScorePill value={one(assessment.practice?.score ?? null)?.total_score} /></td>
                   <td className="p-4"><ScorePill value={one(first?.score ?? null)?.total_score} /></td>
                   <td className="p-4"><ScorePill value={one(second?.score ?? null)?.total_score} /></td>
-                  <td className="p-4"><ScorePill value={one(third?.score ?? null)?.total_score} /></td>
                   <td className="p-4 text-base"><ScorePill value={assessment.overall} /></td>
-                  <td className="whitespace-nowrap p-4 text-slate-600">{[first, second, third].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
+                  <td className="whitespace-nowrap p-4 text-slate-600">{[first, second].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
                   <td className="p-4">{assessment.quiz ? `${assessment.quiz.correct}/${assessment.quiz.total}` : "—"}</td>
                   <td className="p-4">
                     <ScorePill value={assessment.integrity} />

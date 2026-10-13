@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 
-const steps = ["Info", "Clip 1", "Clip 2", "Clip 3", "Done"];
+const steps = ["Info", "Clip 1", "Clip 2", "Done"];
 
 export function Progress({ current }: { current: number }) {
   return (

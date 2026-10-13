@@ -17,13 +17,21 @@ export default async function InstructionsPage({
   if (role !== "annotator" && role !== "qa") redirect("/assessments");
   const { data: assessment } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("completed_at")
+    .select("id,completed_at")
     .eq("candidate_id", candidate.id)
     .eq("role", role)
     .maybeSingle();
   if (!assessment) redirect("/assessments");
   if (assessment.completed_at) redirect(`/done?role=${role}`);
   const isQa = role === "qa";
+  const practiceSlug = isQa ? "qa-clip-1" : "clip-1";
+  const { data: practiceAttempt } = await getSupabaseAdmin()
+    .from("trial_attempts")
+    .select("submitted_at,clip:trial_clips!inner(slug)")
+    .eq("assessment_id", assessment.id)
+    .eq("clip.slug", practiceSlug)
+    .maybeSingle();
+  const practiceDone = Boolean(practiceAttempt?.submitted_at);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">
@@ -33,8 +41,8 @@ export default async function InstructionsPage({
         <h1 className="mt-3 text-3xl font-medium tracking-tight">{isQa ? "QA review instructions" : "Annotation instructions"}</h1>
         <p className="mt-4 leading-7 text-slate-600">
           {isQa
-            ? "You will review three intentionally flawed transcripts against three new five-minute meeting clips. Correct the transcript and summarize the important errors you found."
-            : "You will transcribe three five-minute meeting clips. Work carefully and submit each clip when finished."}{" "}
+            ? "You will review two intentionally flawed transcripts against two five-minute meeting clips. Correct the transcript and summarize the important errors you found."
+            : "You will transcribe two five-minute meeting clips. Work carefully and submit each clip when finished. An optional practice clip is available first."}{" "}
           Your time starts on the server when you click each start button.
         </p>
         <h2 className="mt-8 text-lg font-semibold">Required format</h2>
@@ -55,7 +63,12 @@ export default async function InstructionsPage({
         <div className="mt-4"><CrosstalkExample /></div>
         <h2 className="mt-8 text-lg font-semibold">Keyboard shortcuts</h2>
         <div className="mt-4"><Shortcuts /></div>
-        <GuidelineQuiz role={role} firstClipHref={isQa ? "/task/qa-clip-1" : "/task/clip-1"} />
+        <GuidelineQuiz
+          role={role}
+          practiceHref={practiceDone ? `/practice?role=${role}` : `/task/${practiceSlug}`}
+          practiceDone={practiceDone}
+          firstClipHref={isQa ? "/task/qa-clip-2" : "/task/clip-2"}
+        />
       </article>
     </main>
   );

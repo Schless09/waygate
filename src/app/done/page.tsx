@@ -23,7 +23,7 @@ export default async function DonePage({
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">
-      <Progress current={4} />
+      <Progress current={3} />
       <div className="card p-12 text-center">
         <div className="relative mx-auto grid size-16 place-items-center">
           <span className="absolute inset-0 animate-ping rounded-full bg-brand-200 opacity-60 [animation-iteration-count:2]" />

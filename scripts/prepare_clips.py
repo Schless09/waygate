@@ -307,12 +307,12 @@ def main() -> None:
     if args.dry_run:
         return
 
-    export_upload_insert(dataset, standard, "clip-1", "Clip 1 — Standard", "standard", 1, "annotator")
-    export_upload_insert(dataset, hard, "clip-2", "Clip 2 — Challenging", "hard", 2, "annotator")
-    export_upload_insert(dataset, expert, "clip-3", "Clip 3 — Expert", "hard", 3, "annotator")
-    export_upload_insert(dataset, qa_standard, "qa-clip-1", "QA Clip 1 — Standard", "standard", 1, "qa")
-    export_upload_insert(dataset, qa_hard, "qa-clip-2", "QA Clip 2 — Challenging", "hard", 2, "qa")
-    export_upload_insert(dataset, qa_expert, "qa-clip-3", "QA Clip 3 — Expert", "hard", 3, "qa")
+    export_upload_insert(dataset, standard, "clip-1", "Practice — Standard", "standard", 1, "annotator")
+    export_upload_insert(dataset, hard, "clip-2", "Clip 1 — Challenging", "hard", 2, "annotator")
+    export_upload_insert(dataset, expert, "clip-3", "Clip 2 — Expert", "hard", 3, "annotator")
+    export_upload_insert(dataset, qa_standard, "qa-clip-1", "QA Practice — Standard", "standard", 1, "qa")
+    export_upload_insert(dataset, qa_hard, "qa-clip-2", "QA Clip 1 — Challenging", "hard", 2, "qa")
+    export_upload_insert(dataset, qa_expert, "qa-clip-3", "QA Clip 2 — Expert", "hard", 3, "qa")
     print("Uploaded and registered three annotator clips and three distinct QA clips.")
 
 

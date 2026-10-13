@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { AudioTask } from "@/components/audio-task";
 import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
+import { isPracticeClip, PRACTICE_SORT_ORDER, realClipNumber } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
     .eq("assessment_id", assessment.id)
     .eq("clip_id", clip.id)
     .maybeSingle();
+  const practice = isPracticeClip(clip.sort_order);
+  if (attempt?.submitted_at && practice) redirect(`/practice?role=${clip.role}`);
   if (attempt?.submitted_at) {
     const { data: nextClip } = await supabase
       .from("trial_clips")
@@ -42,14 +45,15 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
       .order("sort_order")
       .limit(1)
       .maybeSingle();
-    redirect(nextClip ? `/task/${nextClip.slug}` : "/done");
+    redirect(nextClip ? `/task/${nextClip.slug}` : `/done?role=${clip.role}`);
   }
 
-  if (clip.sort_order > 1) {
+  if (!practice) {
     const { data: priorClips } = await supabase
       .from("trial_clips")
       .select("id,slug,sort_order")
       .eq("role", clip.role)
+      .gt("sort_order", PRACTICE_SORT_ORDER)
       .lt("sort_order", clip.sort_order)
       .order("sort_order");
     const priorIds = (priorClips ?? []).map((item) => item.id);
@@ -71,7 +75,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10 sm:py-14">
-      <Progress current={clip.sort_order} />
+      <Progress current={practice ? 0 : realClipNumber(clip.sort_order)} />
       <AudioTask
         clip={{
           id: clip.id,
@@ -84,7 +88,8 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
           audioUrl: signed.signedUrl,
         }}
         initialAttempt={attempt}
-        step={clip.sort_order}
+        step={realClipNumber(clip.sort_order)}
+        practice={practice}
         mode={clip.role}
         initialTranscript={clip.role === "qa" ? clip.qa_source_transcript ?? "" : ""}
       />
