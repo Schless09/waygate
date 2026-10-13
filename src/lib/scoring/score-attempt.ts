@@ -123,10 +123,10 @@ export async function scoreAttempt(attemptId: string) {
     await supabase.from("scores").upsert(
       {
         attempt_id: attemptId,
-        wer,
-        transcription_score: transcriptionScore,
-        pace_score: pace.score,
-        pace_ratio: pace.ratio,
+        wer: null,
+        transcription_score: null,
+        pace_score: null,
+        pace_ratio: null,
         speaker_score: null,
         format_score: null,
         total_score: null,

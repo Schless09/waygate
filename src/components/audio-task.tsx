@@ -45,11 +45,14 @@ export function AudioTask({
   const [error, setError] = useState("");
 
   useEffect(() => {
-    try {
-      setTranscript(localStorage.getItem(storageKey) ?? "");
-    } catch {
-      // Storage can be disabled by browser privacy settings.
-    }
+    const frame = requestAnimationFrame(() => {
+      try {
+        setTranscript(localStorage.getItem(storageKey) ?? "");
+      } catch {
+        // Storage can be disabled by browser privacy settings.
+      }
+    });
+    return () => cancelAnimationFrame(frame);
   }, [storageKey]);
 
   useEffect(() => {

@@ -116,13 +116,15 @@ def find_candidates(dataset: Dataset) -> list[Window]:
 
 
 def choose_windows(candidates: list[Window]) -> tuple[Window, Window]:
+    by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
+    quartile = max(1, len(by_overlap) // 4)
     standard = max(
-        candidates,
+        by_overlap[:quartile],
         key=lambda item: item.turn_rate - item.overlap_seconds * 0.8 - item.long_silence_seconds,
     )
     alternatives = [
         item
-        for item in candidates
+        for item in by_overlap[-quartile:]
         if item.meeting_id != standard.meeting_id
         or abs(item.start - standard.start) >= WINDOW_SECONDS
     ]
@@ -209,7 +211,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Choose and print windows without uploading")
     args = parser.parse_args()
 
-    dataset = load_dataset("Trelis/tiron-eval-meetings", split="train")
+    dataset = load_dataset("Trelis/tiron-eval-meetings", split="ami")
     if "audio" not in dataset.column_names:
         raise RuntimeError("Dataset has no audio column")
     dataset = dataset.cast_column("audio", Audio(decode=False))
