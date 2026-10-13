@@ -35,6 +35,7 @@ export function PiiTagger({
 }) {
   const [selection, setSelection] = useState<Selection>(null);
   const anchorRef = useRef<number | null>(null);
+  const textRef = useRef<HTMLDivElement>(null);
 
   const tagFor = (index: number) => tags.find((tag) => index >= tag.start && index <= tag.end);
   const reviewFor = (index: number) => review?.find((entity) => index >= entity.start && index <= entity.end);
@@ -77,13 +78,15 @@ export function PiiTagger({
   function onMouseUp(event: React.MouseEvent) {
     if (disabled) return;
     const native = window.getSelection();
-    if (native && !native.isCollapsed) {
-      const from = tokenIndex(native.anchorNode);
-      const to = tokenIndex(native.focusNode);
+    if (native && !native.isCollapsed && native.rangeCount) {
+      const range = native.getRangeAt(0);
+      const touched = [...(textRef.current?.querySelectorAll("[data-i]") ?? [])]
+        .filter((element) => range.intersectsNode(element))
+        .map((element) => Number(element.getAttribute("data-i")));
       native.removeAllRanges();
-      if (from !== null && to !== null) {
-        anchorRef.current = Math.min(from, to);
-        setSelection({ start: Math.min(from, to), end: Math.max(from, to) });
+      if (touched.length) {
+        anchorRef.current = Math.min(...touched);
+        setSelection({ start: Math.min(...touched), end: Math.max(...touched) });
       }
       return;
     }
@@ -135,6 +138,7 @@ export function PiiTagger({
         </div>
       )}
       <div
+        ref={textRef}
         onMouseUp={onMouseUp}
         className={`space-y-2.5 rounded-2xl bg-white p-5 text-[15px] leading-8 ring-1 ring-slate-200 ${disabled ? "" : "cursor-text"}`}
       >
