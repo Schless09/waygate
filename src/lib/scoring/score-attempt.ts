@@ -3,7 +3,11 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { CLAUDE_MODEL, SCORE_WEIGHTS } from "./config";
+import {
+  ANNOTATOR_SCORE_WEIGHTS,
+  CLAUDE_MODEL,
+  QA_SCORE_WEIGHTS,
+} from "./config";
 import { paceScore, wordErrorRate } from "./deterministic";
 
 const claudeResultSchema = z.object({
@@ -33,6 +37,16 @@ async function evaluateWithClaude(
   errorKey: unknown,
 ) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const roleGuidance =
+    role === "qa"
+      ? `This is a QA review assessment. format_score measures the REVIEWER'S WORK, not the quality already present in the supplied flawed transcript.
+- Compare the candidate's corrected transcript and reviewer notes with the seeded error list.
+- Give credit for correctly fixing and explicitly explaining seeded errors, accurate severity judgments, and actionable feedback.
+- Do not award points merely because the prefilled transcript already has valid timestamps, labels, or mostly correct words.
+- Gibberish, generic, or non-actionable reviewer notes must receive format_score 0.
+- If the candidate leaves all seeded errors uncorrected and unidentified, format_score must be 0.
+- Base strengths and weaknesses on the candidate's review actions.`
+      : `This is an annotator assessment. format_score measures timestamp format and accuracy, appropriate bracket tags, speaker-turn formatting, and clean-verbatim adherence.`;
   const prompt = `Reference utterances (speaker labels and seconds):
 ${JSON.stringify(reference)}
 
@@ -44,7 +58,7 @@ Reviewer notes (QA only): ${JSON.stringify(review)}
 Seeded QA errors (QA only): ${JSON.stringify(errorKey)}
 
 Evaluate speaker attribution. Find the best mapping from candidate labels to reference labels, estimate the percentage of words assigned to the correct speaker, verify the speaker count, and count missed and false turn changes.
-Also evaluate format: [mm:ss] timestamps and whether they are roughly within 5 seconds of reference turn starts, appropriate [inaudible]/[crosstalk] usage, and clean verbatim (filler "um"/"uh" removed, other content retained). For a QA assessment, include whether the reviewer found and clearly explained the seeded errors when assigning format_score and format_notes.
+${roleGuidance}
 
 Return exactly this JSON shape:
 {"speaker_mapping":{},"correct_speaker_count":true,"pct_words_correct_speaker":0,"missed_turns":0,"false_turns":0,"speaker_score":0,"notes":"","format_score":0,"format_notes":"","strengths":[],"weaknesses":[]}`;
@@ -117,23 +131,46 @@ export async function scoreAttempt(attemptId: string) {
       attempt.qa_review,
       clip.qa_error_key,
     );
+    const role = assessment?.role ?? "annotator";
+    const reviewNotes =
+      attempt.qa_review &&
+      typeof attempt.qa_review === "object" &&
+      "notes" in attempt.qa_review &&
+      typeof attempt.qa_review.notes === "string"
+        ? attempt.qa_review.notes
+        : "";
+    const reviewWordCount = reviewNotes.match(/\p{L}+/gu)?.length ?? 0;
+    const formatScore =
+      role === "qa" && reviewWordCount < 8
+        ? Math.min(5, feedback.format_score)
+        : feedback.format_score;
+    const gradedFeedback =
+      formatScore === feedback.format_score
+        ? feedback
+        : {
+            ...feedback,
+            format_score: formatScore,
+            format_notes: `${feedback.format_notes} Reviewer notes contained fewer than eight words, so the QA review score was capped at 5.`,
+          };
+    const weights =
+      role === "qa" ? QA_SCORE_WEIGHTS : ANNOTATOR_SCORE_WEIGHTS;
     const total =
-      transcriptionScore * SCORE_WEIGHTS.transcription +
-      feedback.speaker_score * SCORE_WEIGHTS.speaker +
-      pace.score * SCORE_WEIGHTS.pace +
-      feedback.format_score * SCORE_WEIGHTS.format;
+      transcriptionScore * weights.transcription +
+      gradedFeedback.speaker_score * weights.speaker +
+      pace.score * weights.pace +
+      gradedFeedback.format_score * weights.format;
 
     const { error: saveError } = await supabase.from("trial_scores").upsert(
       {
         attempt_id: attemptId,
         wer,
         transcription_score: transcriptionScore,
-        speaker_score: feedback.speaker_score,
+        speaker_score: gradedFeedback.speaker_score,
         pace_score: pace.score,
         pace_ratio: pace.ratio,
-        format_score: feedback.format_score,
+        format_score: gradedFeedback.format_score,
         total_score: total,
-        claude_feedback: feedback,
+        claude_feedback: gradedFeedback,
         scored_at: new Date().toISOString(),
         error: null,
       },

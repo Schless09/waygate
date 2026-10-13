@@ -51,6 +51,15 @@ export function wordErrorRate(reference: string, candidate: string) {
 
 export function paceScore(activeSeconds: number, durationSeconds: number) {
   const ratio = durationSeconds > 0 ? activeSeconds / durationSeconds : 8;
-  const score = ratio <= 3 ? 100 : ratio >= 8 ? 0 : ((8 - ratio) / 5) * 100;
+  const score =
+    ratio < 0.5
+      ? 0
+      : ratio < 1
+        ? ((ratio - 0.5) / 0.5) * 100
+        : ratio <= 3
+          ? 100
+          : ratio >= 8
+            ? 0
+            : ((8 - ratio) / 5) * 100;
   return { ratio, score };
 }

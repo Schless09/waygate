@@ -1,8 +1,15 @@
-export const SCORE_WEIGHTS = {
+export const ANNOTATOR_SCORE_WEIGHTS = {
   transcription: 0.5,
   speaker: 0.25,
   pace: 0.15,
   format: 0.1,
+} as const;
+
+export const QA_SCORE_WEIGHTS = {
+  transcription: 0.35,
+  speaker: 0.1,
+  pace: 0.1,
+  format: 0.45,
 } as const;
 
 // Haiku is sufficient for this constrained JSON rubric and costs roughly half
