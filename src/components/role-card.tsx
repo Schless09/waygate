@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Headphones, ShieldCheck } from "lucide-react";
+import { ArrowRight, CheckCircle2, GraduationCap, Headphones, ShieldCheck } from "lucide-react";
 
 const STATUS_STYLES = {
   "not started": "bg-slate-100 text-slate-600",
@@ -56,6 +56,21 @@ export function RoleCard({
       </div>
       <h2 className="mt-5 text-xl font-semibold tracking-tight">{title}</h2>
       <p className="mt-2 flex-1 leading-6 text-slate-600">{description}</p>
+      <ol className="mt-5 space-y-2 text-sm">
+        <li className="flex items-center gap-2.5">
+          <span className="grid size-6 place-items-center rounded-full bg-brand-50 text-brand-600 ring-1 ring-brand-200">
+            <GraduationCap className="size-3.5" />
+          </span>
+          <span className="font-medium text-slate-800">Practice clip</span>
+          <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">Optional · not scored</span>
+        </li>
+        {[1, 2].map((clip) => (
+          <li key={clip} className="flex items-center gap-2.5">
+            <span className="grid size-6 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white">{clip}</span>
+            <span className="font-medium text-slate-800">Scored clip {clip}</span>
+          </li>
+        ))}
+      </ol>
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
       <button
         onClick={begin}
