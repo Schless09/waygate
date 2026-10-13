@@ -108,7 +108,7 @@ def find_candidates(dataset: Dataset) -> list[Window]:
         meeting_end = max(float(item["end_time"]) for item in utterances)
         for start in range(0, max(1, int(meeting_end - WINDOW_SECONDS) + 1), 15):
             candidate = window_metrics(row_index, row, float(start), utterances)
-            if candidate and candidate.long_silence_seconds <= 35:
+            if candidate:
                 candidates.append(candidate)
     if len(candidates) < 3:
         raise RuntimeError("Could not find three qualifying AMI windows")
