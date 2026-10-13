@@ -12,14 +12,14 @@ export async function POST(
   }
   const { attemptId } = await params;
   const { data } = await getSupabaseAdmin()
-    .from("attempts")
+    .from("trial_attempts")
     .select("id")
     .eq("id", attemptId)
     .not("submitted_at", "is", null)
     .maybeSingle();
   if (!data) return NextResponse.json({ error: "Attempt not found" }, { status: 404 });
 
-  await getSupabaseAdmin().from("scores").upsert(
+  await getSupabaseAdmin().from("trial_scores").upsert(
     { attempt_id: attemptId, error: null, scored_at: null },
     { onConflict: "attempt_id" },
   );

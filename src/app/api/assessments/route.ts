@@ -13,7 +13,7 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
   const { data: existing } = await supabase
-    .from("assessments")
+    .from("trial_assessments")
     .select("id,role,completed_at")
     .eq("candidate_id", candidate.id)
     .eq("role", input.data.role)
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   if (existing) return NextResponse.json(existing);
 
   const { data, error } = await supabase
-    .from("assessments")
+    .from("trial_assessments")
     .insert({ candidate_id: candidate.id, role: input.data.role })
     .select("id,role,completed_at")
     .single();

@@ -37,7 +37,7 @@ export async function getCandidate() {
   if (!token) return null;
 
   const { data } = await getSupabaseAdmin()
-    .from("candidates")
+    .from("trial_candidates")
     .select("id,name,email,completed_at,created_at")
     .eq("session_token", token)
     .maybeSingle();

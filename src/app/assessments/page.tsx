@@ -7,7 +7,7 @@ export default async function AssessmentsPage() {
   const candidate = await getCandidate();
   if (!candidate) redirect("/");
   const { data } = await getSupabaseAdmin()
-    .from("assessments")
+    .from("trial_assessments")
     .select("role,completed_at")
     .eq("candidate_id", candidate.id);
 

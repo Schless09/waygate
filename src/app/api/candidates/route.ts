@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
   const { data: existing, error: lookupError } = await supabase
-    .from("candidates")
+    .from("trial_candidates")
     .select("id,completed_at")
     .eq("email", parsed.data.email)
     .maybeSingle();
@@ -28,10 +28,10 @@ export async function POST(request: Request) {
   const sessionToken = randomUUID();
   const result = existing
     ? await supabase
-        .from("candidates")
+        .from("trial_candidates")
         .update({ name: parsed.data.name, session_token: sessionToken })
         .eq("id", existing.id)
-    : await supabase.from("candidates").insert({
+    : await supabase.from("trial_candidates").insert({
         name: parsed.data.name,
         email: parsed.data.email,
         session_token: sessionToken,

@@ -13,13 +13,13 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
 
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
-    .from("clips")
+    .from("trial_clips")
     .select("id,slug,title,audio_path,duration_seconds,speaker_count,difficulty,sort_order,role,qa_source_transcript")
     .eq("slug", slug)
     .single();
   if (!clip) notFound();
   const { data: assessment } = await supabase
-    .from("assessments")
+    .from("trial_assessments")
     .select("id,completed_at")
     .eq("candidate_id", candidate.id)
     .eq("role", clip.role)
@@ -28,14 +28,14 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
   if (assessment.completed_at) redirect(`/done?role=${clip.role}`);
 
   const { data: attempt } = await supabase
-    .from("attempts")
+    .from("trial_attempts")
     .select("id,started_at,submitted_at")
     .eq("assessment_id", assessment.id)
     .eq("clip_id", clip.id)
     .maybeSingle();
   if (attempt?.submitted_at) {
     const { data: nextClip } = await supabase
-      .from("clips")
+      .from("trial_clips")
       .select("slug")
       .eq("role", clip.role)
       .gt("sort_order", clip.sort_order)
@@ -47,14 +47,14 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
 
   if (clip.sort_order > 1) {
     const { data: priorClips } = await supabase
-      .from("clips")
+      .from("trial_clips")
       .select("id,slug,sort_order")
       .eq("role", clip.role)
       .lt("sort_order", clip.sort_order)
       .order("sort_order");
     const priorIds = (priorClips ?? []).map((item) => item.id);
     const { data: completedAttempts } = await supabase
-      .from("attempts")
+      .from("trial_attempts")
       .select("clip_id")
       .eq("assessment_id", assessment.id)
       .not("submitted_at", "is", null)

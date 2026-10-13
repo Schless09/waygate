@@ -17,15 +17,15 @@ export default async function CandidateDetail({
   if (!(await isAdmin())) redirect("/admin");
   const { id } = await params;
   const { data: candidate } = await getSupabaseAdmin()
-    .from("candidates")
+    .from("trial_candidates")
     .select("id,name,email,created_at,completed_at")
     .eq("id", id)
     .maybeSingle();
   if (!candidate) notFound();
 
   const { data: attempts } = await getSupabaseAdmin()
-    .from("attempts")
-    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,qa_review,assessment:assessments(role),clip:clips(title,role,sort_order,duration_seconds,reference_text),score:scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,scored_at,error)")
+    .from("trial_attempts")
+    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,qa_review,assessment:trial_assessments(role),clip:trial_clips(title,role,sort_order,duration_seconds,reference_text),score:trial_scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,scored_at,error)")
     .eq("candidate_id", id)
     .order("started_at");
 

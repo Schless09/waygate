@@ -34,7 +34,7 @@ export async function POST(
   const { slug } = await params;
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
-    .from("clips")
+    .from("trial_clips")
     .select("id,slug,sort_order,role")
     .eq("slug", slug)
     .maybeSingle();
@@ -43,7 +43,7 @@ export async function POST(
     return NextResponse.json({ error: "Reviewer notes are required." }, { status: 400 });
   }
   const { data: assessment } = await supabase
-    .from("assessments")
+    .from("trial_assessments")
     .select("id,completed_at")
     .eq("candidate_id", candidate.id)
     .eq("role", clip.role)
@@ -52,7 +52,7 @@ export async function POST(
     return NextResponse.json({ error: "Assessment unavailable" }, { status: 409 });
   }
   const { data: attempt } = await supabase
-    .from("attempts")
+    .from("trial_attempts")
     .select("id,started_at,submitted_at")
     .eq("assessment_id", assessment.id)
     .eq("clip_id", clip.id)
@@ -69,7 +69,7 @@ export async function POST(
     Math.round((submittedAt.getTime() - new Date(attempt.started_at).getTime()) / 1000),
   );
   const { error } = await supabase
-    .from("attempts")
+    .from("trial_attempts")
     .update({
       submitted_at: submittedAt.toISOString(),
       active_seconds: activeSeconds,
@@ -84,17 +84,17 @@ export async function POST(
 
   // Mark completion with a simple count query that avoids exposing reference data.
   const { count: clipCount } = await supabase
-    .from("clips")
+    .from("trial_clips")
     .select("id", { count: "exact", head: true })
     .eq("role", clip.role);
   const { count: submittedCount } = await supabase
-    .from("attempts")
+    .from("trial_attempts")
     .select("id", { count: "exact", head: true })
     .eq("assessment_id", assessment.id)
     .not("submitted_at", "is", null);
   if (clipCount && submittedCount === clipCount) {
     await supabase
-      .from("assessments")
+      .from("trial_assessments")
       .update({ completed_at: submittedAt.toISOString() })
       .eq("id", assessment.id);
   }
@@ -102,7 +102,7 @@ export async function POST(
   const { data: nextClip } = clipCount === submittedCount
     ? { data: null }
     : await supabase
-        .from("clips")
+        .from("trial_clips")
         .select("slug")
         .eq("role", clip.role)
         .gt("sort_order", clip.sort_order)

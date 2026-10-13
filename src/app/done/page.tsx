@@ -13,7 +13,7 @@ export default async function DonePage({
   const role = (await searchParams).role;
   if (role !== "annotator" && role !== "qa") redirect("/assessments");
   const { data: assessment } = await getSupabaseAdmin()
-    .from("assessments")
+    .from("trial_assessments")
     .select("completed_at")
     .eq("candidate_id", candidate.id)
     .eq("role", role)

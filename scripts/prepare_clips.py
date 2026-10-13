@@ -268,7 +268,7 @@ def export_upload_insert(
                 {"content-type": "audio/mpeg", "upsert": "true"},
             )
 
-    supabase.table("clips").upsert(
+    supabase.table("trial_clips").upsert(
         {
             "slug": slug,
             "title": title,

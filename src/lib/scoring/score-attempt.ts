@@ -72,9 +72,9 @@ Return exactly this JSON shape:
 export async function scoreAttempt(attemptId: string) {
   const supabase = getSupabaseAdmin();
   const { data: attempt, error } = await supabase
-    .from("attempts")
+    .from("trial_attempts")
     .select(
-      "id,transcript,active_seconds,qa_review,assessment:assessments(role),clip:clips(duration_seconds,reference_text,reference_utterances,qa_source_transcript,qa_error_key)",
+      "id,transcript,active_seconds,qa_review,assessment:trial_assessments(role),clip:trial_clips(duration_seconds,reference_text,reference_utterances,qa_source_transcript,qa_error_key)",
     )
     .eq("id", attemptId)
     .single();
@@ -97,7 +97,7 @@ export async function scoreAttempt(attemptId: string) {
       : Math.max(0, 100 * (1 - wer));
   const pace = paceScore(attempt.active_seconds, clip.duration_seconds);
 
-  await supabase.from("scores").upsert(
+  await supabase.from("trial_scores").upsert(
     {
       attempt_id: attemptId,
       wer,
@@ -123,7 +123,7 @@ export async function scoreAttempt(attemptId: string) {
       pace.score * SCORE_WEIGHTS.pace +
       feedback.format_score * SCORE_WEIGHTS.format;
 
-    const { error: saveError } = await supabase.from("scores").upsert(
+    const { error: saveError } = await supabase.from("trial_scores").upsert(
       {
         attempt_id: attemptId,
         wer,
@@ -143,7 +143,7 @@ export async function scoreAttempt(attemptId: string) {
   } catch (scoringError) {
     const message =
       scoringError instanceof Error ? scoringError.message : "Unknown scoring error";
-    await supabase.from("scores").upsert(
+    await supabase.from("trial_scores").upsert(
       {
         attempt_id: attemptId,
         wer: null,

@@ -7,9 +7,9 @@ export async function GET() {
   if (!(await isAdmin())) return new Response("Unauthorized", { status: 401 });
 
   const { data, error } = await getSupabaseAdmin()
-    .from("attempts")
+    .from("trial_attempts")
     .select(
-      "candidate:candidates(name,email,created_at),assessment:assessments(role,completed_at),clip:clips(slug,title),started_at,submitted_at,active_seconds,qa_review,score:scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,error)",
+      "candidate:trial_candidates(name,email,created_at),assessment:trial_assessments(role,completed_at),clip:trial_clips(slug,title),started_at,submitted_at,active_seconds,qa_review,score:trial_scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,error)",
     )
     .order("submitted_at", { ascending: false });
   if (error) return new Response(error.message, { status: 500 });

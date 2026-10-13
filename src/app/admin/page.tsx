@@ -34,8 +34,8 @@ export default async function AdminPage({
   }
 
   const { data: assessments, error } = await getSupabaseAdmin()
-    .from("assessments")
-    .select("id,role,created_at,completed_at,candidate:candidates(id,name,email),attempts(active_seconds,submitted_at,clip:clips(sort_order),score:scores(total_score,error,scored_at))")
+    .from("trial_assessments")
+    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,clip:trial_clips(sort_order),score:trial_scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
