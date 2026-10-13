@@ -7,6 +7,7 @@ import { QUIZ_QUESTIONS, quizStorageKey } from "@/lib/quiz";
 export function GuidelineQuiz({ role, firstClipHref }: { role: string; firstClipHref: string }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<number[]>(() => QUIZ_QUESTIONS.map(() => -1));
+  const [agreed, setAgreed] = useState(false);
   const complete = answers.every((answer) => answer >= 0);
 
   function continueToClip() {
@@ -50,12 +51,24 @@ export function GuidelineQuiz({ role, firstClipHref }: { role: string; firstClip
           </li>
         ))}
       </ol>
+      <label className={`mt-8 flex cursor-pointer gap-3 rounded-xl p-4 text-sm leading-6 ring-1 transition ${agreed ? "bg-brand-50 ring-brand-300" : "ring-slate-200 hover:ring-brand-200"}`}>
+        <input
+          type="checkbox"
+          checked={agreed}
+          onChange={(event) => setAgreed(event.target.checked)}
+          className="mt-1 size-4 shrink-0 accent-brand-600"
+        />
+        <span className="text-slate-700">
+          I will complete this assessment on my own, without live captions, speech-to-text, AI tools, or help from
+          anyone else. I understand that using them will disqualify my submission.
+        </span>
+      </label>
       <button
         onClick={continueToClip}
-        disabled={!complete}
-        className="btn-primary mt-8 w-full"
+        disabled={!complete || !agreed}
+        className="btn-primary mt-4 w-full"
       >
-        {complete ? "Continue to Clip 1" : "Answer all questions to continue"}
+        {!complete ? "Answer all questions to continue" : !agreed ? "Accept the agreement to continue" : "Continue to Clip 1"}
       </button>
     </section>
   );

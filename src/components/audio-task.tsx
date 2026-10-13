@@ -282,6 +282,7 @@ export function AudioTask({
               <li>Label speakers A, B, C, D in order of first appearance.</li>
               <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
               <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
+              <li>Do not use live captions, speech-to-text, or AI tools.</li>
             </ul>
             <div className="mt-6 rounded-xl bg-[#14122b] p-4 font-mono text-xs leading-6 text-brand-100">
               <p>[00:03] Speaker A: Should we review the launch plan?</p>

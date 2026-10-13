@@ -42,6 +42,7 @@ export default async function InstructionsPage({
           <li>Label speakers A, B, C, D in order of first appearance.</li>
           <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
           <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
+          <li>Work on your own. Live captions (turn off Chrome or macOS Live Caption), speech-to-text, and AI tools are not allowed.</li>
         </ul>
         <div className="mt-6 rounded-xl bg-[#14122b] p-5 font-mono text-sm leading-7 text-brand-100 ring-1 ring-brand-900">
           <p>[00:03] Speaker A: Should we review the launch plan?</p>
