@@ -2,23 +2,41 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
+import { getSupabaseAdmin } from "@/lib/supabase";
 
-export default async function InstructionsPage() {
+export default async function InstructionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ role?: string }>;
+}) {
   const candidate = await getCandidate();
   if (!candidate) redirect("/");
-  if (candidate.completed_at) redirect("/done");
+  const role = (await searchParams).role;
+  if (role !== "annotator" && role !== "qa") redirect("/assessments");
+  const { data: assessment } = await getSupabaseAdmin()
+    .from("assessments")
+    .select("completed_at")
+    .eq("candidate_id", candidate.id)
+    .eq("role", role)
+    .maybeSingle();
+  if (!assessment) redirect("/assessments");
+  if (assessment.completed_at) redirect(`/done?role=${role}`);
+  const isQa = role === "qa";
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">
       <Progress current={0} />
       <article className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
-        <h1 className="text-3xl font-semibold">Instructions</h1>
+        <h1 className="text-3xl font-semibold">{isQa ? "QA review instructions" : "Annotation instructions"}</h1>
         <p className="mt-4 leading-7 text-slate-600">
-          You will transcribe three five-minute meeting clips. Work carefully and submit each clip when finished. Your time starts on the server when you click its start button.
+          {isQa
+            ? "You will review three intentionally flawed transcripts against three new five-minute meeting clips. Correct the transcript and summarize the important errors you found."
+            : "You will transcribe three five-minute meeting clips. Work carefully and submit each clip when finished."}{" "}
+          Your time starts on the server when you click each start button.
         </p>
         <h2 className="mt-8 text-lg font-semibold">Required format</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-700">
-          <li>Write one speaker turn per line.</li>
+          <li>{isQa ? "Correct the provided transcript while preserving one speaker turn per line." : "Write one speaker turn per line."}</li>
           <li>Label speakers A, B, C, D in order of first appearance.</li>
           <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
           <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
@@ -32,7 +50,7 @@ export default async function InstructionsPage() {
         <p className="mt-3 text-slate-600">
           Ctrl+Space plays or pauses · Ctrl+Left skips back 5 seconds · Ctrl+T inserts the current timestamp.
         </p>
-        <Link href="/task/clip-1" className="mt-8 block rounded-lg bg-slate-900 px-5 py-3 text-center font-medium text-white hover:bg-slate-700">
+        <Link href={isQa ? "/task/qa-clip-1" : "/task/clip-1"} className="mt-8 block rounded-lg bg-slate-900 px-5 py-3 text-center font-medium text-white hover:bg-slate-700">
           Continue to Clip 1
         </Link>
       </article>

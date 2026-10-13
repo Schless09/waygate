@@ -5,8 +5,7 @@ import { getCandidate } from "@/lib/auth";
 
 export default async function Home() {
   const candidate = await getCandidate();
-  if (candidate?.completed_at) redirect("/done");
-  if (candidate) redirect("/instructions");
+  if (candidate) redirect("/assessments");
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">

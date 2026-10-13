@@ -15,6 +15,7 @@ const telemetrySchema = z.object({
 const inputSchema = z.object({
   transcript: z.string().trim().min(1).max(100_000),
   telemetry: telemetrySchema,
+  reviewNotes: z.string().trim().max(10_000).optional(),
 });
 
 export async function POST(
@@ -22,7 +23,7 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const candidate = await getCandidate();
-  if (!candidate || candidate.completed_at) {
+  if (!candidate) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const input = inputSchema.safeParse(await request.json().catch(() => null));
@@ -32,11 +33,29 @@ export async function POST(
 
   const { slug } = await params;
   const supabase = getSupabaseAdmin();
+  const { data: clip } = await supabase
+    .from("clips")
+    .select("id,slug,sort_order,role")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
+  if (clip.role === "qa" && (!input.data.reviewNotes || input.data.reviewNotes.length < 20)) {
+    return NextResponse.json({ error: "Reviewer notes are required." }, { status: 400 });
+  }
+  const { data: assessment } = await supabase
+    .from("assessments")
+    .select("id,completed_at")
+    .eq("candidate_id", candidate.id)
+    .eq("role", clip.role)
+    .maybeSingle();
+  if (!assessment || assessment.completed_at) {
+    return NextResponse.json({ error: "Assessment unavailable" }, { status: 409 });
+  }
   const { data: attempt } = await supabase
     .from("attempts")
-    .select("id,started_at,submitted_at,clip:clips!inner(slug,sort_order)")
-    .eq("candidate_id", candidate.id)
-    .eq("clips.slug", slug)
+    .select("id,started_at,submitted_at")
+    .eq("assessment_id", assessment.id)
+    .eq("clip_id", clip.id)
     .maybeSingle();
 
   if (!attempt) return NextResponse.json({ error: "Start this clip first." }, { status: 409 });
@@ -56,6 +75,7 @@ export async function POST(
       active_seconds: activeSeconds,
       transcript: input.data.transcript,
       telemetry: input.data.telemetry,
+      qa_review: clip.role === "qa" ? { notes: input.data.reviewNotes } : null,
     })
     .eq("id", attempt.id)
     .is("submitted_at", null);
@@ -63,26 +83,29 @@ export async function POST(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Mark completion with a simple count query that avoids exposing reference data.
-  const { count: clipCount } = await supabase.from("clips").select("id", { count: "exact", head: true });
+  const { count: clipCount } = await supabase
+    .from("clips")
+    .select("id", { count: "exact", head: true })
+    .eq("role", clip.role);
   const { count: submittedCount } = await supabase
     .from("attempts")
     .select("id", { count: "exact", head: true })
-    .eq("candidate_id", candidate.id)
+    .eq("assessment_id", assessment.id)
     .not("submitted_at", "is", null);
   if (clipCount && submittedCount === clipCount) {
     await supabase
-      .from("candidates")
+      .from("assessments")
       .update({ completed_at: submittedAt.toISOString() })
-      .eq("id", candidate.id);
+      .eq("id", assessment.id);
   }
 
-  const clip = Array.isArray(attempt.clip) ? attempt.clip[0] : attempt.clip;
   const { data: nextClip } = clipCount === submittedCount
     ? { data: null }
     : await supabase
         .from("clips")
         .select("slug")
-        .gt("sort_order", clip?.sort_order ?? 0)
+        .eq("role", clip.role)
+        .gt("sort_order", clip.sort_order)
         .order("sort_order")
         .limit(1)
         .maybeSingle();

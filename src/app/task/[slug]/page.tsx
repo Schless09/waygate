@@ -9,28 +9,35 @@ export const dynamic = "force-dynamic";
 export default async function TaskPage({ params }: { params: Promise<{ slug: string }> }) {
   const candidate = await getCandidate();
   if (!candidate) redirect("/");
-  if (candidate.completed_at) redirect("/done");
   const { slug } = await params;
-  if (!["clip-1", "clip-2", "clip-3"].includes(slug)) notFound();
 
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
     .from("clips")
-    .select("id,slug,title,audio_path,duration_seconds,speaker_count,difficulty,sort_order")
+    .select("id,slug,title,audio_path,duration_seconds,speaker_count,difficulty,sort_order,role,qa_source_transcript")
     .eq("slug", slug)
     .single();
   if (!clip) notFound();
+  const { data: assessment } = await supabase
+    .from("assessments")
+    .select("id,completed_at")
+    .eq("candidate_id", candidate.id)
+    .eq("role", clip.role)
+    .maybeSingle();
+  if (!assessment) redirect("/assessments");
+  if (assessment.completed_at) redirect(`/done?role=${clip.role}`);
 
   const { data: attempt } = await supabase
     .from("attempts")
     .select("id,started_at,submitted_at")
-    .eq("candidate_id", candidate.id)
+    .eq("assessment_id", assessment.id)
     .eq("clip_id", clip.id)
     .maybeSingle();
   if (attempt?.submitted_at) {
     const { data: nextClip } = await supabase
       .from("clips")
       .select("slug")
+      .eq("role", clip.role)
       .gt("sort_order", clip.sort_order)
       .order("sort_order")
       .limit(1)
@@ -42,13 +49,14 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
     const { data: priorClips } = await supabase
       .from("clips")
       .select("id,slug,sort_order")
+      .eq("role", clip.role)
       .lt("sort_order", clip.sort_order)
       .order("sort_order");
     const priorIds = (priorClips ?? []).map((item) => item.id);
     const { data: completedAttempts } = await supabase
       .from("attempts")
       .select("clip_id")
-      .eq("candidate_id", candidate.id)
+      .eq("assessment_id", assessment.id)
       .not("submitted_at", "is", null)
       .in("clip_id", priorIds);
     const completedIds = new Set((completedAttempts ?? []).map((item) => item.clip_id));
@@ -77,6 +85,8 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
         }}
         initialAttempt={attempt}
         step={clip.sort_order}
+        mode={clip.role}
+        initialTranscript={clip.role === "qa" ? clip.qa_source_transcript ?? "" : ""}
       />
     </main>
   );

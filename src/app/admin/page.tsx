@@ -33,14 +33,15 @@ export default async function AdminPage({
     );
   }
 
-  const { data: candidates, error } = await getSupabaseAdmin()
-    .from("candidates")
-    .select("id,name,email,created_at,completed_at,attempts(active_seconds,submitted_at,clip:clips(sort_order),score:scores(total_score,error,scored_at))")
+  const { data: assessments, error } = await getSupabaseAdmin()
+    .from("assessments")
+    .select("id,role,created_at,completed_at,candidate:candidates(id,name,email),attempts(active_seconds,submitted_at,clip:clips(sort_order),score:scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
-  const rows = (candidates ?? []).map((candidate) => {
-    const attempts = (candidate.attempts ?? []) as AttemptRow[];
+  const rows = (assessments ?? []).map((assessment) => {
+    const attempts = (assessment.attempts ?? []) as AttemptRow[];
+    const candidate = one(assessment.candidate);
     const scores = attempts
       .map((attempt) => one(attempt.score)?.total_score)
       .filter((value): value is number => value !== null && value !== undefined);
@@ -52,7 +53,8 @@ export default async function AdminPage({
           ? "scoring"
           : "in progress";
     return {
-      ...candidate,
+      ...assessment,
+      candidate,
       attempts,
       overall: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
       status,
@@ -67,7 +69,7 @@ export default async function AdminPage({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold">Assessment results</h1>
-          <p className="mt-2 text-slate-600">{rows.length} candidates</p>
+          <p className="mt-2 text-slate-600">{rows.length} role assessments</p>
         </div>
         <div className="flex gap-3">
           <Link href="/admin?sort=score" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium">Sort by score</Link>
@@ -78,24 +80,25 @@ export default async function AdminPage({
       <div className="mt-8 overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((candidate) => {
-              const byClip = (order: number) => candidate.attempts.find((attempt) => one(attempt.clip)?.sort_order === order);
+            {rows.map((assessment) => {
+              const byClip = (order: number) => assessment.attempts.find((attempt) => one(attempt.clip)?.sort_order === order);
               const first = byClip(1);
               const second = byClip(2);
               const third = byClip(3);
               return (
-                <tr key={candidate.id} className="hover:bg-slate-50">
-                  <td className="p-4"><Link href={`/admin/candidate/${candidate.id}`} className="font-medium underline-offset-2 hover:underline">{candidate.name}</Link><span className="block text-slate-500">{candidate.email}</span></td>
-                  <td className="p-4 text-slate-600">{new Date(candidate.created_at).toLocaleDateString()}</td>
+                <tr key={assessment.id} className="hover:bg-slate-50">
+                  <td className="p-4"><Link href={`/admin/candidate/${assessment.candidate?.id}`} className="font-medium underline-offset-2 hover:underline">{assessment.candidate?.name}</Link><span className="block text-slate-500">{assessment.candidate?.email}</span></td>
+                  <td className="p-4 capitalize">{assessment.role === "qa" ? "QA reviewer" : "Annotator"}</td>
+                  <td className="p-4 text-slate-600">{new Date(assessment.created_at).toLocaleDateString()}</td>
                   <td className="p-4">{one(first?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
                   <td className="p-4">{one(second?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
                   <td className="p-4">{one(third?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
-                  <td className="p-4 font-semibold">{candidate.overall?.toFixed(1) ?? "—"}</td>
+                  <td className="p-4 font-semibold">{assessment.overall?.toFixed(1) ?? "—"}</td>
                   <td className="p-4 text-slate-600">{[first, second, third].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
-                  <td className="p-4 capitalize">{candidate.status}</td>
+                  <td className="p-4 capitalize">{assessment.status}</td>
                 </tr>
               );
             })}

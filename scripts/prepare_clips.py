@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select, cut, upload, and register three AMI meeting clips."""
+"""Select, cut, upload, and register six AMI meeting clips across two role tracks."""
 
 from __future__ import annotations
 
@@ -122,7 +122,7 @@ def windows_overlap(left: Window, right: Window) -> bool:
     )
 
 
-def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window]:
+def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Window, Window, Window]:
     by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
     quartile = max(1, len(by_overlap) // 4)
     standard = max(
@@ -150,7 +150,23 @@ def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window]:
         third_candidates,
         key=lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
     )
-    return standard, hard, expert
+    selected = [standard, hard, expert]
+    remaining = [
+        item for item in candidates if not any(windows_overlap(item, chosen) for chosen in selected)
+    ]
+    qa_windows = []
+    scorers = (
+        lambda item: item.turn_rate - item.overlap_seconds - item.long_silence_seconds,
+        lambda item: item.turn_rate * 2 + item.overlap_seconds - item.long_silence_seconds,
+        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
+    )
+    for scorer in scorers:
+        if not remaining:
+            raise RuntimeError("Could not find three distinct QA windows")
+        chosen = max(remaining, key=scorer)
+        qa_windows.append(chosen)
+        remaining = [item for item in remaining if not windows_overlap(item, chosen)]
+    return standard, hard, expert, qa_windows[0], qa_windows[1], qa_windows[2]
 
 
 def audio_segment(row: dict[str, Any]) -> AudioSegment:
@@ -187,8 +203,51 @@ def references(window: Window) -> tuple[list[dict[str, Any]], str]:
     return output, " ".join(item["text"] for item in output).strip()
 
 
+def qa_source(utterances: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+    rows = [dict(item) for item in utterances]
+    errors: list[dict[str, Any]] = []
+    if len(rows) < 8:
+        raise RuntimeError("QA clip does not contain enough utterances")
+
+    words = rows[1]["text"].split()
+    if len(words) > 2:
+        removed = words[-1]
+        rows[1]["text"] = " ".join(words[:-1])
+        errors.append({"type": "omission", "turn": 2, "detail": f"Missing final word: {removed}"})
+
+    original_speaker = rows[3]["speaker"]
+    rows[3]["speaker"] = "A" if original_speaker != "A" else "B"
+    errors.append({"type": "speaker", "turn": 4, "detail": f"Should be Speaker {original_speaker}"})
+
+    rows[5]["begin_time"] += 12
+    errors.append({"type": "timestamp", "turn": 6, "detail": "Timestamp shifted 12 seconds late"})
+
+    rows[6]["text"] = f"um {rows[6]['text']}"
+    errors.append({"type": "clean_verbatim", "turn": 7, "detail": "Inserted filler word 'um'"})
+
+    replaced_words = rows[7]["text"].split()
+    if replaced_words:
+        replaced = replaced_words[len(replaced_words) // 2]
+        replaced_words[len(replaced_words) // 2] = "[inaudible]"
+        rows[7]["text"] = " ".join(replaced_words)
+        errors.append({"type": "false_inaudible", "turn": 8, "detail": f"Replaced clear word: {replaced}"})
+
+    lines = []
+    for item in rows:
+        seconds = max(0, int(item["begin_time"]))
+        timestamp = f"{seconds // 60:02d}:{seconds % 60:02d}"
+        lines.append(f"[{timestamp}] Speaker {item['speaker']}: {item['text']}")
+    return "\n".join(lines), errors
+
+
 def export_upload_insert(
-    dataset: Dataset, window: Window, slug: str, title: str, difficulty: str, sort_order: int
+    dataset: Dataset,
+    window: Window,
+    slug: str,
+    title: str,
+    difficulty: str,
+    sort_order: int,
+    role: str,
 ) -> None:
     url = os.environ["NEXT_PUBLIC_SUPABASE_URL"]
     key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -196,6 +255,7 @@ def export_upload_insert(
     clip = audio_segment(dataset[window.row_index])
     cut = clip[int(window.start * 1000) : int(window.end * 1000)].set_channels(1)
     utterances, reference_text = references(window)
+    source_transcript, error_key = qa_source(utterances) if role == "qa" else (None, None)
     audio_path = f"{slug}.mp3"
 
     with tempfile.TemporaryDirectory() as directory:
@@ -217,7 +277,10 @@ def export_upload_insert(
             "speaker_count": window.speakers,
             "reference_utterances": utterances,
             "reference_text": reference_text,
+            "qa_source_transcript": source_transcript,
+            "qa_error_key": error_key,
             "difficulty": difficulty,
+            "role": role,
             "sort_order": sort_order,
         },
         on_conflict="slug",
@@ -233,9 +296,19 @@ def main() -> None:
     if "audio" not in dataset.column_names:
         raise RuntimeError("Dataset has no audio column")
     dataset = dataset.cast_column("audio", Audio(decode=False))
-    standard, hard, expert = choose_windows(find_candidates(dataset))
+    standard, hard, expert, qa_standard, qa_hard, qa_expert = choose_windows(
+        find_candidates(dataset)
+    )
 
-    for label, window in (("standard", standard), ("hard", hard), ("expert", expert)):
+    selected = (
+        ("annotator-standard", standard),
+        ("annotator-hard", hard),
+        ("annotator-expert", expert),
+        ("qa-standard", qa_standard),
+        ("qa-hard", qa_hard),
+        ("qa-expert", qa_expert),
+    )
+    for label, window in selected:
         print(
             f"{label}: meeting={window.meeting_id} window={window.start:.1f}-{window.end:.1f}s "
             f"speakers={window.speakers} turns={window.turns} overlap={window.overlap_seconds:.1f}s"
@@ -243,10 +316,13 @@ def main() -> None:
     if args.dry_run:
         return
 
-    export_upload_insert(dataset, standard, "clip-1", "Clip 1 — Standard", "standard", 1)
-    export_upload_insert(dataset, hard, "clip-2", "Clip 2 — Challenging", "hard", 2)
-    export_upload_insert(dataset, expert, "clip-3", "Clip 3 — Expert", "hard", 3)
-    print("Uploaded trial-audio/clip-1.mp3, clip-2.mp3, and clip-3.mp3; clip rows upserted.")
+    export_upload_insert(dataset, standard, "clip-1", "Clip 1 — Standard", "standard", 1, "annotator")
+    export_upload_insert(dataset, hard, "clip-2", "Clip 2 — Challenging", "hard", 2, "annotator")
+    export_upload_insert(dataset, expert, "clip-3", "Clip 3 — Expert", "hard", 3, "annotator")
+    export_upload_insert(dataset, qa_standard, "qa-clip-1", "QA Clip 1 — Standard", "standard", 1, "qa")
+    export_upload_insert(dataset, qa_hard, "qa-clip-2", "QA Clip 2 — Challenging", "hard", 2, "qa")
+    export_upload_insert(dataset, qa_expert, "qa-clip-3", "QA Clip 3 — Expert", "hard", 3, "qa")
+    print("Uploaded and registered three annotator clips and three distinct QA clips.")
 
 
 if __name__ == "__main__":

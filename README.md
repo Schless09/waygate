@@ -1,12 +1,14 @@
 # Waygate audio annotation trial
 
-A small, server-timed assessment for candidates to transcribe three meeting clips.
+A small, server-timed assessment with separate Transcription Annotator and QA
+Reviewer tracks. Each role uses three distinct meeting clips.
 Built with Next.js App Router, Supabase, and Anthropic, and designed for Vercel.
 
 ## What it includes
 
-- Candidate sign-in with one completed attempt per email
-- Three timed tasks with audio controls, hotkeys, local autosave, and telemetry
+- Candidate sign-in with one completed assessment per email and role
+- Three annotation tasks plus three separate QA review tasks
+- Audio controls, hotkeys, local autosave, and telemetry
 - Server-only references and one-hour Supabase Storage signed URLs
 - Deterministic WER/pace scoring plus Claude speaker/format scoring
 - Password-protected admin results, re-scoring, and CSV export
@@ -38,8 +40,9 @@ Requirements: Node.js 20+, Python 3.11+, and `ffmpeg`.
    python scripts/prepare_clips.py
    ```
 
-The dry run prints the chosen meeting IDs and windows. The standard clip favors
-clear turns and less overlap; the hard clip favors faster turns and more overlap.
+The dry run prints all six chosen meeting IDs and non-overlapping windows. Each
+role receives standard, challenging, and expert clips. QA clips include
+intentionally seeded transcript errors for candidates to find and correct.
 See `ATTRIBUTION.md` for the AMI credit and CC BY 4.0 license.
 
 ## Environment variables

@@ -7,7 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ slug: string }> },
 ) {
   const candidate = await getCandidate();
-  if (!candidate || candidate.completed_at) {
+  if (!candidate) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -15,21 +15,31 @@ export async function POST(
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
     .from("clips")
-    .select("id,sort_order")
+    .select("id,sort_order,role")
     .eq("slug", slug)
     .single();
   if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
+  const { data: assessment } = await supabase
+    .from("assessments")
+    .select("id,completed_at")
+    .eq("candidate_id", candidate.id)
+    .eq("role", clip.role)
+    .maybeSingle();
+  if (!assessment || assessment.completed_at) {
+    return NextResponse.json({ error: "Assessment unavailable" }, { status: 409 });
+  }
 
   if (clip.sort_order > 1) {
     const { data: priorClips } = await supabase
       .from("clips")
       .select("id")
+      .eq("role", clip.role)
       .lt("sort_order", clip.sort_order);
     const priorIds = (priorClips ?? []).map((item) => item.id);
     const { count } = await supabase
       .from("attempts")
       .select("id", { count: "exact", head: true })
-      .eq("candidate_id", candidate.id)
+      .eq("assessment_id", assessment.id)
       .not("submitted_at", "is", null)
       .in("clip_id", priorIds);
     if (count !== priorIds.length) {
@@ -40,7 +50,7 @@ export async function POST(
   const { data: existing } = await supabase
     .from("attempts")
     .select("id,started_at,submitted_at")
-    .eq("candidate_id", candidate.id)
+    .eq("assessment_id", assessment.id)
     .eq("clip_id", clip.id)
     .maybeSingle();
 
@@ -53,6 +63,7 @@ export async function POST(
     .from("attempts")
     .insert({
       candidate_id: candidate.id,
+      assessment_id: assessment.id,
       clip_id: clip.id,
       started_at: new Date().toISOString(),
     })

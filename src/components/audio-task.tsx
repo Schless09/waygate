@@ -17,10 +17,14 @@ export function AudioTask({
   clip,
   initialAttempt,
   step,
+  mode,
+  initialTranscript,
 }: {
   clip: ClipSummary;
   initialAttempt: Attempt;
   step: number;
+  mode: "annotator" | "qa";
+  initialTranscript: string;
 }) {
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -35,7 +39,8 @@ export function AudioTask({
   const playStartedRef = useRef<number | null>(null);
   const storageKey = `waygate-transcript-${clip.slug}`;
   const [attempt, setAttempt] = useState(initialAttempt);
-  const [transcript, setTranscript] = useState("");
+  const [transcript, setTranscript] = useState(initialTranscript);
+  const [reviewNotes, setReviewNotes] = useState("");
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(clip.duration_seconds);
@@ -47,13 +52,13 @@ export function AudioTask({
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       try {
-        setTranscript(localStorage.getItem(storageKey) ?? "");
+        setTranscript(localStorage.getItem(storageKey) ?? initialTranscript);
       } catch {
         // Storage can be disabled by browser privacy settings.
       }
     });
     return () => cancelAnimationFrame(frame);
-  }, [storageKey]);
+  }, [initialTranscript, storageKey]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -153,6 +158,10 @@ export function AudioTask({
       setError("Enter your transcript before submitting.");
       return;
     }
+    if (mode === "qa" && reviewNotes.trim().length < 20) {
+      setError("Add reviewer notes describing the important errors you found.");
+      return;
+    }
     if (!window.confirm("Submit this transcript? You will not be able to edit it afterward.")) return;
     flushPlayTime();
     setBusy(true);
@@ -162,6 +171,7 @@ export function AudioTask({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         transcript,
+        reviewNotes: mode === "qa" ? reviewNotes : undefined,
         telemetry: {
           ...telemetryRef.current,
           totalPlayTime: Math.round(telemetryRef.current.totalPlayTime * 10) / 10,
@@ -177,7 +187,7 @@ export function AudioTask({
     try {
       localStorage.removeItem(storageKey);
     } catch {}
-    router.push(body.complete ? "/done" : `/task/${body.nextSlug}`);
+    router.push(body.complete ? `/done?role=${mode}` : `/task/${body.nextSlug}`);
     router.refresh();
   }
 
@@ -265,7 +275,7 @@ export function AudioTask({
 
       <div className="mt-5">
         <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-          <span>One speaker turn per line</span>
+          <span>{mode === "qa" ? "Correct the provided transcript" : "One speaker turn per line"}</span>
           <span>Ctrl+Space play · Ctrl+← back · Ctrl+T timestamp</span>
         </div>
         <textarea
@@ -278,6 +288,20 @@ export function AudioTask({
         />
         <p className="mt-2 text-xs text-slate-500">Saved locally every 5 seconds.</p>
       </div>
+      {mode === "qa" && (
+        <label className="mt-5 block">
+          <span className="mb-2 block text-sm font-semibold">Reviewer notes</span>
+          <span className="mb-2 block text-xs text-slate-500">
+            Summarize the most important errors, their severity, and useful feedback for the annotator.
+          </span>
+          <textarea
+            value={reviewNotes}
+            onChange={(event) => setReviewNotes(event.target.value)}
+            required
+            className="h-36 w-full resize-y rounded-xl border border-slate-300 bg-white p-4 text-sm leading-6 outline-none focus:border-slate-700"
+          />
+        </label>
+      )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
       <button onClick={submit} disabled={busy} className="mt-6 w-full rounded-lg bg-slate-900 px-5 py-3 font-medium text-white disabled:opacity-50">
         {busy ? "Submitting…" : "Submit transcript"}

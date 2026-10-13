@@ -25,13 +25,6 @@ export async function POST(request: Request) {
   if (lookupError) {
     return NextResponse.json({ error: "Unable to start the assessment." }, { status: 500 });
   }
-  if (existing?.completed_at) {
-    return NextResponse.json(
-      { error: "You've already completed this assessment." },
-      { status: 409 },
-    );
-  }
-
   const sessionToken = randomUUID();
   const result = existing
     ? await supabase

@@ -25,7 +25,13 @@ function extractJson(value: string) {
   return claudeResultSchema.parse(JSON.parse(trimmed));
 }
 
-async function evaluateWithClaude(reference: unknown, candidate: string) {
+async function evaluateWithClaude(
+  reference: unknown,
+  candidate: string,
+  role: string,
+  review: unknown,
+  errorKey: unknown,
+) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const prompt = `Reference utterances (speaker labels and seconds):
 ${JSON.stringify(reference)}
@@ -33,8 +39,12 @@ ${JSON.stringify(reference)}
 Candidate transcript:
 ${candidate}
 
+Assessment role: ${role}
+Reviewer notes (QA only): ${JSON.stringify(review)}
+Seeded QA errors (QA only): ${JSON.stringify(errorKey)}
+
 Evaluate speaker attribution. Find the best mapping from candidate labels to reference labels, estimate the percentage of words assigned to the correct speaker, verify the speaker count, and count missed and false turn changes.
-Also evaluate format: [mm:ss] timestamps and whether they are roughly within 5 seconds of reference turn starts, appropriate [inaudible]/[crosstalk] usage, and clean verbatim (filler "um"/"uh" removed, other content retained).
+Also evaluate format: [mm:ss] timestamps and whether they are roughly within 5 seconds of reference turn starts, appropriate [inaudible]/[crosstalk] usage, and clean verbatim (filler "um"/"uh" removed, other content retained). For a QA assessment, include whether the reviewer found and clearly explained the seeded errors when assigning format_score and format_notes.
 
 Return exactly this JSON shape:
 {"speaker_mapping":{},"correct_speaker_count":true,"pct_words_correct_speaker":0,"missed_turns":0,"false_turns":0,"speaker_score":0,"notes":"","format_score":0,"format_notes":"","strengths":[],"weaknesses":[]}`;
@@ -64,13 +74,16 @@ export async function scoreAttempt(attemptId: string) {
   const { data: attempt, error } = await supabase
     .from("attempts")
     .select(
-      "id,transcript,active_seconds,clip:clips(duration_seconds,reference_text,reference_utterances)",
+      "id,transcript,active_seconds,qa_review,assessment:assessments(role),clip:clips(duration_seconds,reference_text,reference_utterances,qa_error_key)",
     )
     .eq("id", attemptId)
     .single();
 
   if (error || !attempt) throw error ?? new Error("Attempt not found");
   const clip = Array.isArray(attempt.clip) ? attempt.clip[0] : attempt.clip;
+  const assessment = Array.isArray(attempt.assessment)
+    ? attempt.assessment[0]
+    : attempt.assessment;
   if (!clip) throw new Error("Clip not found");
 
   const wer = wordErrorRate(clip.reference_text, attempt.transcript ?? "");
@@ -93,6 +106,9 @@ export async function scoreAttempt(attemptId: string) {
     const feedback = await evaluateWithClaude(
       clip.reference_utterances,
       attempt.transcript ?? "",
+      assessment?.role ?? "annotator",
+      attempt.qa_review,
+      clip.qa_error_key,
     );
     const total =
       transcriptionScore * SCORE_WEIGHTS.transcription +

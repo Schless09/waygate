@@ -25,7 +25,7 @@ export default async function CandidateDetail({
 
   const { data: attempts } = await getSupabaseAdmin()
     .from("attempts")
-    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,clip:clips(title,sort_order,duration_seconds,reference_text),score:scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,scored_at,error)")
+    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,qa_review,assessment:assessments(role),clip:clips(title,role,sort_order,duration_seconds,reference_text),score:scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,scored_at,error)")
     .eq("candidate_id", id)
     .order("started_at");
 
@@ -40,12 +40,13 @@ export default async function CandidateDetail({
       <div className="mt-8 space-y-10">
         {(attempts ?? []).map((attempt) => {
           const clip = Array.isArray(attempt.clip) ? attempt.clip[0] : attempt.clip;
+          const assessment = Array.isArray(attempt.assessment) ? attempt.assessment[0] : attempt.assessment;
           const score = Array.isArray(attempt.score) ? attempt.score[0] : attempt.score;
           const feedback = (score?.claude_feedback ?? {}) as Record<string, unknown>;
           return (
             <section key={attempt.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between gap-4">
-                <div><p className="text-sm text-slate-500">Clip {clip?.sort_order}</p><h2 className="text-xl font-semibold">{clip?.title}</h2></div>
+                <div><p className="text-sm capitalize text-slate-500">{assessment?.role === "qa" ? "QA reviewer" : "Annotator"} · Clip {clip?.sort_order}</p><h2 className="text-xl font-semibold">{clip?.title}</h2></div>
                 {attempt.submitted_at && <RescoreButton attemptId={attempt.id} />}
               </div>
               {score?.error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{score.error}</p>}
@@ -69,6 +70,14 @@ export default async function CandidateDetail({
                 <div className="rounded-lg bg-slate-50 p-4 text-sm"><strong>Speaker notes</strong><p className="mt-2 whitespace-pre-wrap text-slate-700">{String(feedback.notes ?? "—")}</p></div>
                 <div className="rounded-lg bg-slate-50 p-4 text-sm"><strong>Format notes</strong><p className="mt-2 whitespace-pre-wrap text-slate-700">{String(feedback.format_notes ?? "—")}</p></div>
               </div>
+              {assessment?.role === "qa" && (
+                <div className="mt-5 rounded-lg border border-slate-200 p-4 text-sm">
+                  <strong>Candidate reviewer notes</strong>
+                  <p className="mt-2 whitespace-pre-wrap text-slate-700">
+                    {String((attempt.qa_review as { notes?: string } | null)?.notes ?? "—")}
+                  </p>
+                </div>
+              )}
               <div className="mt-6 grid gap-5 lg:grid-cols-2">
                 <div><h3 className="mb-2 text-sm font-semibold">Candidate transcript</h3><pre className="max-h-[500px] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 p-4 font-mono text-xs leading-5">{attempt.transcript || "—"}</pre></div>
                 <div><h3 className="mb-2 text-sm font-semibold">Reference transcript</h3><pre className="max-h-[500px] overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 p-4 font-mono text-xs leading-5">{clip?.reference_text || "—"}</pre></div>

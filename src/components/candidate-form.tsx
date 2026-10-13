@@ -24,7 +24,7 @@ export function CandidateForm() {
       setLoading(false);
       return;
     }
-    router.push("/instructions");
+    router.push("/assessments");
   }
 
   return (

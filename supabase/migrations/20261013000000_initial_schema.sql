@@ -18,20 +18,35 @@ create table public.clips (
   speaker_count integer not null check (speaker_count between 1 and 4),
   reference_utterances jsonb not null,
   reference_text text not null,
+  qa_source_transcript text,
+  qa_error_key jsonb,
   difficulty text not null check (difficulty in ('standard', 'hard')),
-  sort_order integer not null unique
+  role text not null default 'annotator' check (role in ('annotator', 'qa')),
+  sort_order integer not null,
+  unique (role, sort_order)
+);
+
+create table public.assessments (
+  id uuid primary key default gen_random_uuid(),
+  candidate_id uuid not null references public.candidates(id) on delete cascade,
+  role text not null check (role in ('annotator', 'qa')),
+  created_at timestamptz not null default now(),
+  completed_at timestamptz,
+  unique (candidate_id, role)
 );
 
 create table public.attempts (
   id uuid primary key default gen_random_uuid(),
   candidate_id uuid not null references public.candidates(id) on delete cascade,
+  assessment_id uuid not null references public.assessments(id) on delete cascade,
   clip_id uuid not null references public.clips(id) on delete restrict,
   started_at timestamptz not null,
   submitted_at timestamptz,
   active_seconds integer check (active_seconds >= 0),
   transcript text,
   telemetry jsonb,
-  unique (candidate_id, clip_id),
+  qa_review jsonb,
+  unique (assessment_id, clip_id),
   check (submitted_at is null or submitted_at >= started_at)
 );
 
@@ -51,11 +66,13 @@ create table public.scores (
 );
 
 create index attempts_candidate_id_idx on public.attempts(candidate_id);
+create index attempts_assessment_id_idx on public.attempts(assessment_id);
 create index attempts_clip_id_idx on public.attempts(clip_id);
 create index clips_sort_order_idx on public.clips(sort_order);
 
 alter table public.candidates enable row level security;
 alter table public.clips enable row level security;
+alter table public.assessments enable row level security;
 alter table public.attempts enable row level security;
 alter table public.scores enable row level security;
 
