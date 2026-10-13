@@ -66,7 +66,7 @@ export default async function CandidateDetail({
               Used their one restart on {new Date(restart.restarted_at!).toLocaleString()}
             </h2>
             <p className="mt-1 text-sm text-slate-600">
-              The scored clips below were discarded. The candidate had already heard this audio, so treat their second attempt with that in mind.
+              This in-progress clip attempt was discarded and the clip restarted. The candidate had already heard some of this audio, so treat the second attempt with that in mind.
             </p>
             <ul className="mt-4 divide-y divide-brand-100 text-sm">
               {discarded.map((attempt) => {

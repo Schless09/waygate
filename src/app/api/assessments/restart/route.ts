@@ -4,7 +4,7 @@ import { getCandidate } from "@/lib/auth";
 import { PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-const inputSchema = z.object({ role: z.enum(["annotator", "qa"]) });
+const inputSchema = z.object({ role: z.enum(["annotator", "qa"]), slug: z.string().min(1) });
 
 export async function POST(request: Request) {
   const candidate = await getCandidate();
@@ -24,21 +24,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "You've already used your one restart." }, { status: 409 });
   }
 
-  const { data: clips } = await supabase
+  const { data: clip } = await supabase
     .from("trial_clips")
-    .select("id,slug")
+    .select("id,slug,sort_order")
     .eq("role", input.data.role)
-    .gt("sort_order", PRACTICE_SORT_ORDER)
-    .order("sort_order");
-  const clipIds = (clips ?? []).map((clip) => clip.id);
+    .eq("slug", input.data.slug)
+    .maybeSingle();
+  if (!clip || clip.sort_order <= PRACTICE_SORT_ORDER) {
+    return NextResponse.json({ error: "Only scored clips can be restarted." }, { status: 400 });
+  }
   const { data: attempts, error: attemptsError } = await supabase
     .from("trial_attempts")
     .select("*, clip:trial_clips(title,sort_order), score:trial_scores(*)")
     .eq("assessment_id", assessment.id)
-    .in("clip_id", clipIds);
+    .eq("clip_id", clip.id);
   if (attemptsError) return NextResponse.json({ error: attemptsError.message }, { status: 500 });
   if (!attempts?.length) {
-    return NextResponse.json({ error: "There's nothing to restart yet." }, { status: 400 });
+    return NextResponse.json({ error: "You haven't started this clip yet." }, { status: 400 });
+  }
+  if (attempts[0].submitted_at) {
+    return NextResponse.json({ error: "This clip has already been submitted." }, { status: 409 });
   }
 
   // Claim the restart before deleting anything so a double click can't use it twice.
@@ -47,7 +52,6 @@ export async function POST(request: Request) {
     .update({
       restart_count: 1,
       restarted_at: new Date().toISOString(),
-      completed_at: null,
       discarded_attempts: attempts,
     })
     .eq("id", assessment.id)
@@ -64,8 +68,5 @@ export async function POST(request: Request) {
     .in("id", attempts.map((attempt) => attempt.id));
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
 
-  return NextResponse.json({
-    next: `/task/${clips![0].slug}`,
-    slugs: clips!.map((clip) => clip.slug),
-  });
+  return NextResponse.json({ next: `/task/${clip.slug}` });
 }

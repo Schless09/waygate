@@ -3,13 +3,13 @@
 import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 
-export function RestartButton({ role }: { role: "annotator" | "qa" }) {
+export function RestartButton({ role, slug }: { role: "annotator" | "qa"; slug: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function restart() {
     const confirmed = window.confirm(
-      "You can restart this assessment only once.\n\nEverything you've done on the scored clips will be discarded and you'll start again from Clip 1. Your practice round is kept.\n\nRestart now?",
+      "You can restart a clip only once during this assessment.\n\nYour transcript and time on this clip will be discarded and the clip will start fresh. Clips you've already submitted are kept.\n\nRestart this clip?",
     );
     if (!confirmed) return;
     setBusy(true);
@@ -17,7 +17,7 @@ export function RestartButton({ role }: { role: "annotator" | "qa" }) {
     const response = await fetch("/api/assessments/restart", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({ role, slug }),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -26,7 +26,7 @@ export function RestartButton({ role }: { role: "annotator" | "qa" }) {
       return;
     }
     try {
-      for (const slug of body.slugs ?? []) localStorage.removeItem(`waygate-transcript-${slug}`);
+      localStorage.removeItem(`waygate-transcript-${slug}`);
     } catch {
       // Storage can be disabled by browser privacy settings.
     }
@@ -36,9 +36,9 @@ export function RestartButton({ role }: { role: "annotator" | "qa" }) {
   return (
     <span className="inline-flex flex-col items-center gap-1">
       <button onClick={restart} disabled={busy} className="btn-secondary">
-        <RotateCcw className="size-4" /> {busy ? "Restarting…" : "Restart assessment"}
+        <RotateCcw className="size-4" /> {busy ? "Restarting…" : "Restart this clip"}
       </button>
-      <span className="text-xs text-slate-500">You can restart once.</span>
+      <span className="text-xs text-slate-500">You can restart one clip, once.</span>
       {error && <span className="text-xs text-red-600">{error}</span>}
     </span>
   );

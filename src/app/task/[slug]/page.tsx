@@ -96,7 +96,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
       />
       {!practice && assessment.restart_count === 0 && (
         <div className="mt-10 flex justify-center">
-          <RestartButton role={clip.role} />
+          <RestartButton role={clip.role} slug={clip.slug} />
         </div>
       )}
     </main>
