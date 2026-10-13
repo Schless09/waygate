@@ -33,7 +33,7 @@ export default async function DonePage({
         </div>
         <h1 className="mt-6 text-3xl font-medium tracking-tight">Submitted. Thank you!</h1>
         <p className="mx-auto mt-3 max-w-md text-slate-600">
-          Your {role === "qa" ? "QA reviewer" : "annotation"} assessment is in. Our team will review it and be in touch soon.
+          Your {role === "qa" ? "QA reviewer" : "annotation"} assessment is in. We&apos;ll share it with the client, and you can expect feedback on next steps within 24–48 hours.
         </p>
         <a href="/assessments" className="btn-secondary mt-8">
           View other assessments <ArrowRight className="size-4" />

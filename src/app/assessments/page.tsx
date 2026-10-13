@@ -21,8 +21,12 @@ export default async function AssessmentsPage() {
     <main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-14">
       <p className="eyebrow">Candidate assessments</p>
       <h1 className="mt-3 text-4xl font-medium tracking-tight">Choose a role</h1>
-      <p className="mt-3 max-w-2xl text-slate-600">
-        You may complete either or both assessments. Each role starts with an optional practice clip, followed by two scored clips, and can be taken once.
+      <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+        Our client is hiring for two roles: <strong className="font-semibold text-slate-800">transcription annotators</strong> and{" "}
+        <strong className="font-semibold text-slate-800">QA reviewers</strong>. Each assessment below is used to determine your fit for that role, so choose the one you&apos;re applying for, or take both if you&apos;re interested in either.
+      </p>
+      <p className="mt-3 max-w-2xl leading-7 text-slate-600">
+        Each role starts with an optional practice clip, followed by two scored clips, and can be taken once. Once you submit, you can expect feedback from the client on next steps within 24–48 hours.
       </p>
       <aside className="mt-8 flex gap-4 rounded-2xl bg-gradient-to-br from-brand-50 to-white p-6 ring-1 ring-brand-200">
         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-600 text-white shadow-md shadow-brand-600/30">
