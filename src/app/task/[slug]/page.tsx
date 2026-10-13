@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { AudioTask } from "@/components/audio-task";
+import { PiiTask } from "@/components/pii-task";
 import { Progress } from "@/components/progress";
 import { PracticeSwitchButton } from "@/components/practice-switch-button";
 import { RestartButton } from "@/components/restart-button";
 import { getCandidate } from "@/lib/auth";
+import { parsePiiSource } from "@/lib/pii";
 import { isPracticeClip, PRACTICE_SORT_ORDER, realClipNumber } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -17,7 +19,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
     .from("trial_clips")
-    .select("id,slug,title,audio_path,duration_seconds,speaker_count,difficulty,sort_order,role,qa_source_transcript")
+    .select("id,slug,title,audio_path,duration_seconds,speaker_count,difficulty,sort_order,role,qa_source_transcript,task_type,pii_source")
     .eq("slug", slug)
     .single();
   if (!clip) notFound();
@@ -87,6 +89,29 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
     if (missing) redirect(`/task/${missing.slug}`);
   }
 
+  const restartControls = !practice && (offerPractice || assessment.restart_count === 0) && (
+    <div className="mt-10 flex flex-wrap items-start justify-center gap-6">
+      {offerPractice && <PracticeSwitchButton role={clip.role} />}
+      {assessment.restart_count === 0 && <RestartButton role={clip.role} slug={clip.slug} />}
+    </div>
+  );
+
+  if (clip.task_type === "pii") {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10 sm:py-14">
+        <Progress current={realClipNumber(clip.sort_order)} role={clip.role} />
+        <PiiTask
+          slug={clip.slug}
+          title={clip.title}
+          label={`Task ${realClipNumber(clip.sort_order)} · PII redaction`}
+          document={parsePiiSource(clip.pii_source ?? "").document}
+          initialAttempt={attempt}
+        />
+        {restartControls}
+      </main>
+    );
+  }
+
   const { data: signed, error } = await supabase.storage
     .from("trial-audio")
     .createSignedUrl(clip.audio_path, 3600);
@@ -94,7 +119,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10 sm:py-14">
-      <Progress current={practice ? 0 : realClipNumber(clip.sort_order)} />
+      <Progress current={practice ? 0 : realClipNumber(clip.sort_order)} role={clip.role} />
       <AudioTask
         clip={{
           id: clip.id,
@@ -112,12 +137,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
         mode={clip.role}
         initialTranscript={clip.role === "qa" ? clip.qa_source_transcript ?? "" : ""}
       />
-      {!practice && (offerPractice || assessment.restart_count === 0) && (
-        <div className="mt-10 flex flex-wrap items-start justify-center gap-6">
-          {offerPractice && <PracticeSwitchButton role={clip.role} />}
-          {assessment.restart_count === 0 && <RestartButton role={clip.role} slug={clip.slug} />}
-        </div>
-      )}
+      {restartControls}
     </main>
   );
 }

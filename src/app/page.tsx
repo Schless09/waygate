@@ -16,7 +16,7 @@ export default async function Home() {
           Audio <span className="bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent">annotation</span> trial
         </h1>
         <p className="mt-4 leading-7 text-slate-600">
-          Transcribe two short meeting clips, with an optional practice round first. Enter your details to review the instructions.
+          Complete two short audio clips and a quick PII task, with an optional practice round first. Enter your details to review the instructions.
         </p>
         <CandidateForm />
       </div>

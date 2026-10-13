@@ -5,6 +5,7 @@ import { RescoreButton } from "@/components/admin-actions";
 import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
 import { integrityReport } from "@/lib/integrity";
+import { piiCategory, type PiiResult } from "@/lib/pii";
 import { isPracticeClip, realClipNumber } from "@/lib/practice";
 import { quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
@@ -42,7 +43,7 @@ export default async function CandidateDetail({
 
   const { data: attempts } = await getSupabaseAdmin()
     .from("trial_attempts")
-    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,qa_review,assessment:trial_assessments(role),clip:trial_clips(title,role,sort_order,duration_seconds,reference_text,reference_utterances),score:trial_scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,scored_at,error)")
+    .select("id,started_at,submitted_at,active_seconds,transcript,telemetry,qa_review,assessment:trial_assessments(role),clip:trial_clips(title,role,sort_order,duration_seconds,reference_text,reference_utterances,task_type),score:trial_scores(wer,transcription_score,speaker_score,pace_score,pace_ratio,format_score,total_score,claude_feedback,pii_result,scored_at,error)")
     .eq("candidate_id", id)
     .order("started_at");
 
@@ -104,6 +105,42 @@ export default async function CandidateDetail({
           const clip = Array.isArray(attempt.clip) ? attempt.clip[0] : attempt.clip;
           const assessment = Array.isArray(attempt.assessment) ? attempt.assessment[0] : attempt.assessment;
           const score = Array.isArray(attempt.score) ? attempt.score[0] : attempt.score;
+          if (clip?.task_type === "pii") {
+            const pii = score?.pii_result as PiiResult | null | undefined;
+            return (
+              <section key={attempt.id} className="card p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <div><p className="eyebrow">Annotator · Task {realClipNumber(clip.sort_order)} · PII redaction</p><h2 className="mt-1 text-xl font-medium tracking-tight">{clip.title}</h2></div>
+                  <div className="ml-auto text-right"><p className="text-xs text-slate-500">Total</p><div className="mt-1 text-lg"><ScorePill value={score?.total_score} /></div></div>
+                  {attempt.submitted_at && <RescoreButton attemptId={attempt.id} />}
+                </div>
+                {score?.error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{score.error}</p>}
+                {pii ? (
+                  <>
+                    <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {[
+                        ["Recall", `${Math.round(pii.recall * 100)}%`],
+                        ["Precision", `${Math.round(pii.precision * 100)}%`],
+                        ["Found", `${pii.entities.filter((entity) => entity.status === "found").length}/${pii.entities.length}`],
+                        ["Time", attempt.active_seconds ? `${Math.round(attempt.active_seconds / 60)} min` : "—"],
+                      ].map(([label, value]) => <div key={label} className="rounded-xl bg-brand-50/60 p-3 ring-1 ring-brand-100"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}
+                    </dl>
+                    <ul className="mt-5 grid gap-2 text-sm sm:grid-cols-2">
+                      {pii.entities.map((entity) => (
+                        <li key={`${entity.start}-${entity.end}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+                          <span><span className="font-medium">{entity.text}</span><span className="ml-2 text-slate-500">{piiCategory(entity.category)?.label}</span></span>
+                          <span className={`shrink-0 text-xs font-semibold ${entity.status === "found" ? "text-emerald-700" : "text-red-700"}`}>{entity.status.replace("_", " ")}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 text-sm text-slate-700"><strong>Tagged but not PII:</strong> {pii.falsePositives.length ? pii.falsePositives.map((text) => `“${text}”`).join(", ") : "none"}</p>
+                  </>
+                ) : (
+                  <p className="mt-4 text-sm text-slate-500">{attempt.submitted_at ? "Scoring…" : "In progress."}</p>
+                )}
+              </section>
+            );
+          }
           const feedback = (score?.claude_feedback ?? {}) as Record<string, unknown>;
           const telemetry = attempt.telemetry as Partial<Telemetry> | null;
           const utterances = (clip?.reference_utterances ?? []) as ReferenceUtterance[];

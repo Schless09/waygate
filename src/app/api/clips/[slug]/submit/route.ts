@@ -2,6 +2,7 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCandidate } from "@/lib/auth";
 import { scoreAttempt } from "@/lib/scoring/score-attempt";
+import { PII_CATEGORY_IDS } from "@/lib/pii";
 import { isPracticeClip, PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -27,8 +28,12 @@ const telemetrySchema = z.object({
 });
 
 const inputSchema = z.object({
-  transcript: z.string().trim().min(1).max(100_000),
+  transcript: z.string().trim().max(100_000).default(""),
   telemetry: telemetrySchema,
+  piiTags: z
+    .array(z.object({ start: z.number().int().min(0), end: z.number().int().min(0), category: z.enum(PII_CATEGORY_IDS) }))
+    .max(500)
+    .optional(),
   reviewNotes: z.string().trim().max(10_000).optional(),
 });
 
@@ -49,10 +54,14 @@ export async function POST(
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
     .from("trial_clips")
-    .select("id,slug,sort_order,role")
+    .select("id,slug,sort_order,role,task_type")
     .eq("slug", slug)
     .maybeSingle();
   if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
+  const pii = clip.task_type === "pii";
+  if (pii ? !input.data.piiTags : !input.data.transcript) {
+    return NextResponse.json({ error: pii ? "Tags are required." : "A transcript is required." }, { status: 400 });
+  }
   if (clip.role === "qa" && (!input.data.reviewNotes || input.data.reviewNotes.length < 20)) {
     return NextResponse.json({ error: "Reviewer notes are required." }, { status: 400 });
   }
@@ -87,7 +96,8 @@ export async function POST(
     .update({
       submitted_at: submittedAt.toISOString(),
       active_seconds: activeSeconds,
-      transcript: input.data.transcript,
+      transcript: pii ? null : input.data.transcript,
+      pii_tags: pii ? input.data.piiTags : null,
       telemetry: input.data.telemetry,
       qa_review: clip.role === "qa" ? { notes: input.data.reviewNotes } : null,
     })

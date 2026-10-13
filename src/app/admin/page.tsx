@@ -11,7 +11,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-type ClipRow = { sort_order: number; duration_seconds: number; reference_utterances: ReferenceUtterance[] };
+type ClipRow = { sort_order: number; duration_seconds: number; reference_utterances: ReferenceUtterance[]; task_type: string };
 
 type AttemptRow = {
   active_seconds: number | null;
@@ -53,7 +53,7 @@ export default async function AdminPage({
 
   const { data: assessments, error } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("id,role,created_at,completed_at,restart_count,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,transcript,telemetry,clip:trial_clips(sort_order,duration_seconds,reference_utterances),score:trial_scores(total_score,error,scored_at))")
+    .select("id,role,created_at,completed_at,restart_count,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,transcript,telemetry,clip:trial_clips(sort_order,duration_seconds,reference_utterances,task_type),score:trial_scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -74,7 +74,7 @@ export default async function AdminPage({
           : "in progress";
     const quiz = allAttempts.map((attempt) => quizScore(attempt.telemetry?.quizAnswers)).find(Boolean) ?? null;
     const integrityScores = attempts
-      .filter((attempt) => attempt.submitted_at)
+      .filter((attempt) => attempt.submitted_at && one(attempt.clip)?.task_type !== "pii")
       .map((attempt) => {
         const clip = one(attempt.clip);
         return integrityReport({
@@ -120,13 +120,14 @@ export default async function AdminPage({
       <div className="card mt-8 max-h-[75vh] overflow-auto">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-b border-brand-100 bg-brand-50/95 text-xs uppercase tracking-wide text-brand-800 backdrop-blur">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Practice</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Integrity</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Practice</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">PII</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Integrity</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((assessment) => {
               const byClip = (order: number) => assessment.attempts.find((attempt) => one(attempt.clip)?.sort_order === order);
               const first = byClip(PRACTICE_SORT_ORDER + 1);
               const second = byClip(PRACTICE_SORT_ORDER + 2);
+              const pii = assessment.attempts.find((attempt) => one(attempt.clip)?.task_type === "pii");
               return (
                 <tr key={assessment.id} className="transition-colors hover:bg-brand-50/50">
                   <td className="p-4"><Link href={`/admin/candidate/${assessment.candidate?.id}`} className="font-medium underline-offset-2 hover:underline">{assessment.candidate?.name}</Link><span className="block text-slate-500">{assessment.candidate?.email}</span></td>
@@ -135,8 +136,9 @@ export default async function AdminPage({
                   <td className="p-4 opacity-60"><ScorePill value={one(assessment.practice?.score ?? null)?.total_score} /></td>
                   <td className="p-4"><ScorePill value={one(first?.score ?? null)?.total_score} /></td>
                   <td className="p-4"><ScorePill value={one(second?.score ?? null)?.total_score} /></td>
+                  <td className="p-4">{assessment.role === "qa" ? <span className="text-slate-400">n/a</span> : <ScorePill value={one(pii?.score ?? null)?.total_score} />}</td>
                   <td className="p-4 text-base"><ScorePill value={assessment.overall} /></td>
-                  <td className="whitespace-nowrap p-4 text-slate-600">{[first, second].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
+                  <td className="whitespace-nowrap p-4 text-slate-600">{[first, second, ...(assessment.role === "qa" ? [] : [pii])].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
                   <td className="p-4">{assessment.quiz ? `${assessment.quiz.correct}/${assessment.quiz.total}` : "—"}</td>
                   <td className="p-4">
                     <ScorePill value={assessment.integrity} />

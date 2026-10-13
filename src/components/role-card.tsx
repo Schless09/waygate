@@ -15,11 +15,13 @@ export function RoleCard({
   title,
   description,
   status,
+  extraStep,
 }: {
   role: "annotator" | "qa";
   title: string;
   description: string;
   status: "not started" | "in progress" | "completed";
+  extraStep?: string;
 }) {
   const router = useRouter();
   const Icon = role === "qa" ? ShieldCheck : Headphones;
@@ -70,6 +72,12 @@ export function RoleCard({
             <span className="font-medium text-slate-800">Scored clip {clip}</span>
           </li>
         ))}
+        {extraStep && (
+          <li className="flex items-center gap-2.5">
+            <span className="grid size-6 place-items-center rounded-full bg-brand-600 text-xs font-semibold text-white">3</span>
+            <span className="font-medium text-slate-800">{extraStep}</span>
+          </li>
+        )}
       </ol>
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
       <button

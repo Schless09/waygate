@@ -8,6 +8,7 @@ import {
   CLAUDE_MODEL,
   QA_SCORE_WEIGHTS,
 } from "./config";
+import { parsePiiSource, scorePii, type PiiSpan } from "@/lib/pii";
 import type { ReferenceUtterance } from "@/lib/types";
 import { paceScore, transcriptCoverage, trimToReferenceWindow, wordErrorRate } from "./deterministic";
 
@@ -102,7 +103,7 @@ export async function scoreAttempt(attemptId: string) {
   const { data: attempt, error } = await supabase
     .from("trial_attempts")
     .select(
-      "id,transcript,active_seconds,qa_review,assessment:trial_assessments(role),clip:trial_clips(duration_seconds,reference_text,reference_utterances,qa_source_transcript,qa_error_key)",
+      "id,transcript,active_seconds,qa_review,pii_tags,assessment:trial_assessments(role),clip:trial_clips(duration_seconds,reference_text,reference_utterances,qa_source_transcript,qa_error_key,task_type,pii_source)",
     )
     .eq("id", attemptId)
     .single();
@@ -113,6 +114,23 @@ export async function scoreAttempt(attemptId: string) {
     ? attempt.assessment[0]
     : attempt.assessment;
   if (!clip) throw new Error("Clip not found");
+
+  if (clip.task_type === "pii") {
+    const { document, entities } = parsePiiSource(clip.pii_source ?? "");
+    const result = scorePii(document, entities, (attempt.pii_tags ?? []) as PiiSpan[]);
+    const { error: saveError } = await supabase.from("trial_scores").upsert(
+      {
+        attempt_id: attemptId,
+        total_score: result.score,
+        pii_result: result,
+        scored_at: new Date().toISOString(),
+        error: null,
+      },
+      { onConflict: "attempt_id" },
+    );
+    if (saveError) throw saveError;
+    return;
+  }
 
   const utterances = (clip.reference_utterances ?? []) as ReferenceUtterance[];
   const fullTranscript = attempt.transcript ?? "";

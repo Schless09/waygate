@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AutoRefresh } from "@/components/auto-refresh";
+import { PiiPractice } from "@/components/pii-practice";
 import { Progress } from "@/components/progress";
 import { ScorePill } from "@/components/score-pill";
 import { getCandidate } from "@/lib/auth";
@@ -55,7 +56,7 @@ export default async function PracticeResultsPage({
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">
-      <Progress current={0} />
+      <Progress current={0} role={role} />
       <article className="card p-8 sm:p-10">
         <p className="eyebrow">Practice round · not scored</p>
         <h1 className="mt-3 text-3xl font-medium tracking-tight">Your practice feedback</h1>
@@ -107,7 +108,11 @@ export default async function PracticeResultsPage({
             )}
           </>
         )}
+      </article>
 
+      {!isQa && <PiiPractice />}
+
+      <div className="mt-6">
         {assessment.completed_at ? (
           <Link href={`/done?role=${role}`} className="btn-secondary mt-8 w-full">Back to your results</Link>
         ) : (
@@ -118,9 +123,9 @@ export default async function PracticeResultsPage({
           )
         )}
         <p className="mt-3 text-center text-xs text-slate-500">
-          The assessment has {clips ? clips.length - 1 : 2} clips. Your time starts when you click start on each one.
+          {isQa ? "The assessment has two scored clips." : "The assessment has two scored clips followed by a PII task."} Your time starts when you click start on each one.
         </p>
-      </article>
+      </div>
     </main>
   );
 }

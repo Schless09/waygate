@@ -1,14 +1,19 @@
 import { Check } from "lucide-react";
 
-const steps = ["Info", "Clip 1", "Clip 2", "Done"];
+const STEPS = {
+  annotator: ["Info", "Clip 1", "Clip 2", "PII", "Done"],
+  qa: ["Info", "Clip 1", "Clip 2", "Done"],
+};
 
-export function Progress({ current }: { current: number }) {
+export function Progress({ current, role = "annotator" }: { current: number | "done"; role?: string }) {
+  const steps = role === "qa" ? STEPS.qa : STEPS.annotator;
+  const position = current === "done" ? steps.length - 1 : current;
   return (
     <nav aria-label="Assessment progress" className="mb-10">
       <ol className="flex items-center gap-2">
         {steps.map((step, index) => {
-          const done = index < current;
-          const active = index === current;
+          const done = index < position;
+          const active = index === position;
           return (
             <li key={step} className="flex flex-1 flex-col gap-2">
               <span
