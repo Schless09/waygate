@@ -132,11 +132,11 @@ export function AudioTask({
         setInstructionsOpen(false);
         return;
       }
-      if (!event.ctrlKey) return;
+      if (!event.ctrlKey && !event.metaKey) return;
       if (event.code === "Space") {
         event.preventDefault();
         togglePlay();
-      } else if (event.code === "ArrowLeft") {
+      } else if (event.key === "ArrowLeft") {
         event.preventDefault();
         seekBy(-5);
       } else if (event.key.toLowerCase() === "t") {
@@ -144,8 +144,8 @@ export function AudioTask({
         insertTimestamp();
       }
     };
-    window.addEventListener("keydown", hotkeys);
-    return () => window.removeEventListener("keydown", hotkeys);
+    window.addEventListener("keydown", hotkeys, { capture: true });
+    return () => window.removeEventListener("keydown", hotkeys, { capture: true });
   }, [insertTimestamp, instructionsOpen, seekBy, togglePlay]);
 
   async function start() {
@@ -277,9 +277,9 @@ export function AudioTask({
             </div>
             <h3 className="mt-7 font-semibold">Keyboard shortcuts</h3>
             <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm text-slate-700">
-              <dt className="font-mono">Ctrl+Space</dt><dd>Play or pause</dd>
-              <dt className="font-mono">Ctrl+Left</dt><dd>Skip back 5 seconds</dd>
-              <dt className="font-mono">Ctrl+T</dt><dd>Insert the current timestamp</dd>
+              <dt className="font-mono">Ctrl/⌘ + Space</dt><dd>Play or pause</dd>
+              <dt className="font-mono">Ctrl/⌘ + Left Arrow</dt><dd>Skip back 5 seconds</dd>
+              <dt className="font-mono">Ctrl/⌘ + T</dt><dd>Insert the current timestamp</dd>
             </dl>
             <p className="mt-8 text-xs leading-5 text-slate-500">
               Opening these instructions does not pause the server-side assessment timer.
@@ -347,7 +347,7 @@ export function AudioTask({
       <div className="mt-5">
         <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
           <span>{mode === "qa" ? "Correct the provided transcript" : "One speaker turn per line"}</span>
-          <span>Ctrl+Space play · Ctrl+← back · Ctrl+T timestamp</span>
+          <span>Ctrl/⌘ + Space play · Ctrl/⌘ + Left Arrow back · Ctrl/⌘ + T timestamp</span>
         </div>
         <textarea
           ref={textareaRef}

@@ -48,7 +48,7 @@ export default async function InstructionsPage({
         </div>
         <h2 className="mt-8 text-lg font-semibold">Keyboard shortcuts</h2>
         <p className="mt-3 text-slate-600">
-          Ctrl+Space plays or pauses · Ctrl+Left skips back 5 seconds · Ctrl+T inserts the current timestamp.
+          Ctrl/⌘ + Space plays or pauses · Ctrl/⌘ + Left Arrow skips back 5 seconds · Ctrl/⌘ + T inserts the current timestamp.
         </p>
         <Link href={isQa ? "/task/qa-clip-1" : "/task/clip-1"} className="mt-8 block rounded-lg bg-slate-900 px-5 py-3 text-center font-medium text-white hover:bg-slate-700">
           Continue to Clip 1
