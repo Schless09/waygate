@@ -52,6 +52,7 @@ See `ATTRIBUTION.md` for the AMI credit and CC BY 4.0 license.
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only database and Storage access |
 | `ANTHROPIC_API_KEY` | Server-only Claude scoring |
+| `ANTHROPIC_MODEL` | Optional model override; defaults to `claude-haiku-4-5-20251001` |
 | `ADMIN_PASSWORD` | Admin password and cookie-signing secret |
 
 ## Deploy to Vercel
