@@ -57,6 +57,9 @@ export function CandidateForm() {
       >
         {loading ? "Starting…" : <>Continue <ArrowRight className="size-4" /></>}
       </button>
+      <p className="rounded-xl bg-brand-50 px-4 py-3 text-sm text-slate-600 ring-1 ring-brand-100">
+        <span className="font-medium text-slate-800">Coming back?</span> Enter the same email you used before to continue where you left off.
+      </p>
     </form>
   );
 }
