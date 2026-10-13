@@ -3,7 +3,7 @@ import { AdminLogin } from "@/components/admin-actions";
 import { isAdmin } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
+export const instant = false;
 
 type AttemptRow = {
   active_seconds: number | null;

@@ -3,6 +3,8 @@ import { CandidateForm } from "@/components/candidate-form";
 import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
 
+export const instant = false;
+
 export default async function Home() {
   const candidate = await getCandidate();
   if (candidate?.completed_at) redirect("/done");

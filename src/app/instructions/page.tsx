@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
 
+export const instant = false;
+
 export default async function InstructionsPage() {
   const candidate = await getCandidate();
   if (!candidate) redirect("/");

@@ -4,7 +4,7 @@ import { RescoreButton } from "@/components/admin-actions";
 import { isAdmin } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
+export const instant = false;
 
 const scoreValue = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toFixed(1);

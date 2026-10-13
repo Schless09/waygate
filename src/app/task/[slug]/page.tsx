@@ -4,7 +4,7 @@ import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
+export const instant = false;
 
 export default async function TaskPage({ params }: { params: Promise<{ slug: string }> }) {
   const candidate = await getCandidate();
