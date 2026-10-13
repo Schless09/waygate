@@ -3,6 +3,7 @@
 import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AudioLines, BookOpen, CloudCheck, Pause, Play, RotateCcw, RotateCw, Send, X } from "lucide-react";
+import { CrosstalkExample } from "@/components/crosstalk-example";
 import { Shortcuts } from "@/components/shortcuts";
 import { quizStorageKey } from "@/lib/quiz";
 import type { ClipSummary, Telemetry, TranscriptSnapshot } from "@/lib/types";
@@ -370,7 +371,8 @@ export function AudioTask({
             <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700 marker:text-brand-400 [&_code]:rounded [&_code]:bg-brand-50 [&_code]:px-1 [&_code]:text-brand-700">
               <li>Use one speaker turn per line.</li>
               <li>Label speakers A, B, C, D in order of first appearance.</li>
-              <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
+              <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech you can&apos;t make out.</li>
+              <li>Place <code>[crosstalk]</code> inline, where the overlap happens. If you can make out the overlapping words, give each speaker their own line instead.</li>
               <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
               <li>Do not use live captions, speech-to-text, or AI tools.</li>
             </ul>
@@ -378,6 +380,8 @@ export function AudioTask({
               <p>[00:03] Speaker A: Should we review the launch plan?</p>
               <p>[00:07] Speaker B: Yes, the first item is [inaudible].</p>
             </div>
+            <h3 className="mt-7 font-semibold">Using [crosstalk]</h3>
+            <div className="mt-3"><CrosstalkExample compact /></div>
             <h3 className="mt-7 font-semibold">Keyboard shortcuts</h3>
             <div className="mt-3"><Shortcuts /></div>
             <p className="mt-8 text-xs leading-5 text-slate-500">

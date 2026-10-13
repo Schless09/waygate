@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { CrosstalkExample } from "@/components/crosstalk-example";
 import { GuidelineQuiz } from "@/components/guideline-quiz";
 import { Progress } from "@/components/progress";
 import { Shortcuts } from "@/components/shortcuts";
@@ -40,15 +41,18 @@ export default async function InstructionsPage({
         <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-700 marker:text-brand-400 [&_code]:rounded [&_code]:bg-brand-50 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-sm [&_code]:text-brand-700">
           <li>{isQa ? "Correct the provided transcript while preserving one speaker turn per line." : "Write one speaker turn per line."}</li>
           <li>Label speakers A, B, C, D in order of first appearance.</li>
-          <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
+          <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech you can&apos;t make out.</li>
+          <li>Place <code>[crosstalk]</code> inline, where the overlap happens. If you can make out the overlapping words, give each speaker their own line instead.</li>
           <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
           <li>Work on your own. Live captions (turn off Chrome or macOS Live Caption), speech-to-text, and AI tools are not allowed.</li>
         </ul>
         <div className="mt-6 rounded-xl bg-[#14122b] p-5 font-mono text-sm leading-7 text-brand-100 ring-1 ring-brand-900">
           <p>[00:03] Speaker A: Should we review the launch plan?</p>
           <p>[00:07] Speaker B: Yes, the first item is [inaudible].</p>
-          <p>[00:12] Speaker A: [crosstalk] Let&apos;s start there.</p>
+          <p>[00:12] Speaker A: Let&apos;s start [crosstalk] there.</p>
         </div>
+        <h2 className="mt-8 text-lg font-semibold">Using [crosstalk]</h2>
+        <div className="mt-4"><CrosstalkExample /></div>
         <h2 className="mt-8 text-lg font-semibold">Keyboard shortcuts</h2>
         <div className="mt-4"><Shortcuts /></div>
         <GuidelineQuiz role={role} firstClipHref={isQa ? "/task/qa-clip-1" : "/task/clip-1"} />
