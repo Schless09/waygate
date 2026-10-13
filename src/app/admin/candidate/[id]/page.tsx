@@ -12,6 +12,14 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+type DiscardedAttempt = {
+  id: string;
+  submitted_at: string | null;
+  active_seconds: number | null;
+  clip: { title: string } | null;
+  score: { total_score: number | null } | { total_score: number | null }[] | null;
+};
+
 const scoreValue = (value: number | null | undefined) =>
   value === null || value === undefined ? "—" : value.toFixed(1);
 
@@ -35,6 +43,12 @@ export default async function CandidateDetail({
     .eq("candidate_id", id)
     .order("started_at");
 
+  const { data: restarts } = await getSupabaseAdmin()
+    .from("trial_assessments")
+    .select("role,restarted_at,discarded_attempts")
+    .eq("candidate_id", id)
+    .not("restarted_at", "is", null);
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-12">
       <Link href="/admin" className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:text-brand-900"><ArrowLeft className="size-4" /> All candidates</Link>
@@ -42,6 +56,36 @@ export default async function CandidateDetail({
         <h1 className="text-3xl font-medium tracking-tight">{candidate.name}</h1>
         <p className="mt-1 text-slate-600">{candidate.email}</p>
       </div>
+
+      {(restarts ?? []).map((restart) => {
+        const discarded = (restart.discarded_attempts ?? []) as DiscardedAttempt[];
+        return (
+          <section key={restart.role} className="card mt-8 border-l-4 border-l-amber-400 p-6">
+            <p className="eyebrow">{restart.role === "qa" ? "QA reviewer" : "Annotator"} · Restarted</p>
+            <h2 className="mt-1 text-lg font-medium tracking-tight">
+              Used their one restart on {new Date(restart.restarted_at!).toLocaleString()}
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              The scored clips below were discarded. The candidate had already heard this audio, so treat their second attempt with that in mind.
+            </p>
+            <ul className="mt-4 divide-y divide-brand-100 text-sm">
+              {discarded.map((attempt) => {
+                const score = Array.isArray(attempt.score) ? attempt.score[0] : attempt.score;
+                return (
+                  <li key={attempt.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                    <span className="font-medium">{attempt.clip?.title ?? "Clip"}</span>
+                    <span className="flex items-center gap-4 text-slate-600">
+                      <span>{attempt.submitted_at ? "Submitted" : "In progress"}</span>
+                      <span>{Math.round((attempt.active_seconds ?? 0) / 60)} min</span>
+                      <ScorePill value={score?.total_score} />
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      })}
 
       <div className="mt-8 space-y-10">
         {(attempts ?? []).map((attempt) => {

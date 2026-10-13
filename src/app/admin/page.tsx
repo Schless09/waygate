@@ -53,7 +53,7 @@ export default async function AdminPage({
 
   const { data: assessments, error } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,transcript,telemetry,clip:trial_clips(sort_order,duration_seconds,reference_utterances),score:trial_scores(total_score,error,scored_at))")
+    .select("id,role,created_at,completed_at,restart_count,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,transcript,telemetry,clip:trial_clips(sort_order,duration_seconds,reference_utterances),score:trial_scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -141,7 +141,7 @@ export default async function AdminPage({
                   <td className="p-4">
                     <ScorePill value={assessment.integrity} />
                   </td>
-                  <td className="p-4"><span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[assessment.status] ?? ""}`}>{assessment.status}</span></td>
+                  <td className="p-4"><span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[assessment.status] ?? ""}`}>{assessment.status}</span>{assessment.restart_count > 0 && <span className="ml-1.5 whitespace-nowrap rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200">Restarted</span>}</td>
                 </tr>
               );
             })}

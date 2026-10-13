@@ -1,6 +1,7 @@
 import { ArrowRight, PartyPopper } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Progress } from "@/components/progress";
+import { RestartButton } from "@/components/restart-button";
 import { getCandidate } from "@/lib/auth";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -15,7 +16,7 @@ export default async function DonePage({
   if (role !== "annotator" && role !== "qa") redirect("/assessments");
   const { data: assessment } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("completed_at")
+    .select("completed_at,restart_count")
     .eq("candidate_id", candidate.id)
     .eq("role", role)
     .maybeSingle();
@@ -38,6 +39,12 @@ export default async function DonePage({
         <a href="/assessments" className="btn-secondary mt-8">
           View other assessments <ArrowRight className="size-4" />
         </a>
+        {assessment.restart_count === 0 && (
+          <div className="mt-8 border-t border-brand-100 pt-6">
+            <p className="mb-3 text-sm text-slate-600">Not happy with how it went?</p>
+            <RestartButton role={role} />
+          </div>
+        )}
       </div>
     </main>
   );

@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { AudioTask } from "@/components/audio-task";
 import { Progress } from "@/components/progress";
+import { RestartButton } from "@/components/restart-button";
 import { getCandidate } from "@/lib/auth";
 import { isPracticeClip, PRACTICE_SORT_ORDER, realClipNumber } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
@@ -21,7 +22,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
   if (!clip) notFound();
   const { data: assessment } = await supabase
     .from("trial_assessments")
-    .select("id,completed_at")
+    .select("id,completed_at,restart_count")
     .eq("candidate_id", candidate.id)
     .eq("role", clip.role)
     .maybeSingle();
@@ -93,6 +94,11 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
         mode={clip.role}
         initialTranscript={clip.role === "qa" ? clip.qa_source_transcript ?? "" : ""}
       />
+      {!practice && assessment.restart_count === 0 && (
+        <div className="mt-10 flex justify-center">
+          <RestartButton role={clip.role} />
+        </div>
+      )}
     </main>
   );
 }
