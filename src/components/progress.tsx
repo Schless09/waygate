@@ -1,4 +1,4 @@
-const steps = ["Info", "Clip 1", "Clip 2", "Done"];
+const steps = ["Info", "Clip 1", "Clip 2", "Clip 3", "Done"];
 
 export function Progress({ current }: { current: number }) {
   return (

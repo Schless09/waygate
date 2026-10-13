@@ -21,13 +21,18 @@ export async function POST(
   if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
 
   if (clip.sort_order > 1) {
+    const { data: priorClips } = await supabase
+      .from("clips")
+      .select("id")
+      .lt("sort_order", clip.sort_order);
+    const priorIds = (priorClips ?? []).map((item) => item.id);
     const { count } = await supabase
       .from("attempts")
-      .select("id,clips!inner(sort_order)", { count: "exact", head: true })
+      .select("id", { count: "exact", head: true })
       .eq("candidate_id", candidate.id)
       .not("submitted_at", "is", null)
-      .lt("clips.sort_order", clip.sort_order);
-    if (!count) {
+      .in("clip_id", priorIds);
+    if (count !== priorIds.length) {
       return NextResponse.json({ error: "Complete the previous clip first." }, { status: 409 });
     }
   }

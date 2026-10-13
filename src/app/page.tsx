@@ -15,7 +15,7 @@ export default async function Home() {
         <p className="text-sm font-medium uppercase tracking-wider text-slate-500">Candidate assessment</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Audio annotation trial</h1>
         <p className="mt-4 leading-7 text-slate-600">
-          Transcribe two short meeting clips. Enter your details to review the instructions.
+          Transcribe three short meeting clips. Enter your details to review the instructions.
         </p>
         <CandidateForm />
       </div>

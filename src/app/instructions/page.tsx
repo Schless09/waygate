@@ -14,7 +14,7 @@ export default async function InstructionsPage() {
       <article className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
         <h1 className="text-3xl font-semibold">Instructions</h1>
         <p className="mt-4 leading-7 text-slate-600">
-          You will transcribe two five-minute meeting clips. Work carefully and submit each clip when finished. Your time starts on the server when you click its start button.
+          You will transcribe three five-minute meeting clips. Work carefully and submit each clip when finished. Your time starts on the server when you click its start button.
         </p>
         <h2 className="mt-8 text-lg font-semibold">Required format</h2>
         <ul className="mt-3 list-disc space-y-2 pl-5 text-slate-700">

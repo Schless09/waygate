@@ -34,7 +34,7 @@ export async function POST(
   const supabase = getSupabaseAdmin();
   const { data: attempt } = await supabase
     .from("attempts")
-    .select("id,started_at,submitted_at,clip:clips!inner(slug)")
+    .select("id,started_at,submitted_at,clip:clips!inner(slug,sort_order)")
     .eq("candidate_id", candidate.id)
     .eq("clips.slug", slug)
     .maybeSingle();
@@ -76,6 +76,21 @@ export async function POST(
       .eq("id", candidate.id);
   }
 
+  const clip = Array.isArray(attempt.clip) ? attempt.clip[0] : attempt.clip;
+  const { data: nextClip } = clipCount === submittedCount
+    ? { data: null }
+    : await supabase
+        .from("clips")
+        .select("slug")
+        .gt("sort_order", clip?.sort_order ?? 0)
+        .order("sort_order")
+        .limit(1)
+        .maybeSingle();
+
   after(() => scoreAttempt(attempt.id));
-  return NextResponse.json({ ok: true, complete: clipCount === submittedCount });
+  return NextResponse.json({
+    ok: true,
+    complete: clipCount === submittedCount,
+    nextSlug: nextClip?.slug ?? null,
+  });
 }

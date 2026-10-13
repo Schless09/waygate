@@ -11,7 +11,7 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
   if (!candidate) redirect("/");
   if (candidate.completed_at) redirect("/done");
   const { slug } = await params;
-  if (!["clip-1", "clip-2"].includes(slug)) notFound();
+  if (!["clip-1", "clip-2", "clip-3"].includes(slug)) notFound();
 
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
@@ -27,19 +27,33 @@ export default async function TaskPage({ params }: { params: Promise<{ slug: str
     .eq("candidate_id", candidate.id)
     .eq("clip_id", clip.id)
     .maybeSingle();
-  if (attempt?.submitted_at) redirect(slug === "clip-1" ? "/task/clip-2" : "/done");
+  if (attempt?.submitted_at) {
+    const { data: nextClip } = await supabase
+      .from("clips")
+      .select("slug")
+      .gt("sort_order", clip.sort_order)
+      .order("sort_order")
+      .limit(1)
+      .maybeSingle();
+    redirect(nextClip ? `/task/${nextClip.slug}` : "/done");
+  }
 
-  if (clip.sort_order === 2) {
-    const { data: firstClip } = await supabase.from("clips").select("id").eq("sort_order", 1).single();
-    const { data: firstAttempt } = firstClip
-      ? await supabase
-          .from("attempts")
-          .select("submitted_at")
-          .eq("candidate_id", candidate.id)
-          .eq("clip_id", firstClip.id)
-          .maybeSingle()
-      : { data: null };
-    if (!firstAttempt?.submitted_at) redirect("/task/clip-1");
+  if (clip.sort_order > 1) {
+    const { data: priorClips } = await supabase
+      .from("clips")
+      .select("id,slug,sort_order")
+      .lt("sort_order", clip.sort_order)
+      .order("sort_order");
+    const priorIds = (priorClips ?? []).map((item) => item.id);
+    const { data: completedAttempts } = await supabase
+      .from("attempts")
+      .select("clip_id")
+      .eq("candidate_id", candidate.id)
+      .not("submitted_at", "is", null)
+      .in("clip_id", priorIds);
+    const completedIds = new Set((completedAttempts ?? []).map((item) => item.clip_id));
+    const missing = priorClips?.find((item) => !completedIds.has(item.id));
+    if (missing) redirect(`/task/${missing.slug}`);
   }
 
   const { data: signed, error } = await supabase.storage

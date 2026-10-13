@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select, cut, upload, and register two AMI meeting clips."""
+"""Select, cut, upload, and register three AMI meeting clips."""
 
 from __future__ import annotations
 
@@ -110,12 +110,19 @@ def find_candidates(dataset: Dataset) -> list[Window]:
             candidate = window_metrics(row_index, row, float(start), utterances)
             if candidate and candidate.long_silence_seconds <= 35:
                 candidates.append(candidate)
-    if len(candidates) < 2:
-        raise RuntimeError("Could not find two qualifying AMI windows")
+    if len(candidates) < 3:
+        raise RuntimeError("Could not find three qualifying AMI windows")
     return candidates
 
 
-def choose_windows(candidates: list[Window]) -> tuple[Window, Window]:
+def windows_overlap(left: Window, right: Window) -> bool:
+    return (
+        left.meeting_id == right.meeting_id
+        and max(left.start, right.start) < min(left.end, right.end)
+    )
+
+
+def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window]:
     by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
     quartile = max(1, len(by_overlap) // 4)
     standard = max(
@@ -132,7 +139,18 @@ def choose_windows(candidates: list[Window]) -> tuple[Window, Window]:
         alternatives,
         key=lambda item: item.turn_rate * 2 + item.overlap_seconds * 1.5 - item.long_silence_seconds,
     )
-    return standard, hard
+    third_candidates = [
+        item
+        for item in candidates
+        if not windows_overlap(item, standard) and not windows_overlap(item, hard)
+    ]
+    if not third_candidates:
+        raise RuntimeError("Could not find a third non-overlapping AMI window")
+    expert = max(
+        third_candidates,
+        key=lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
+    )
+    return standard, hard, expert
 
 
 def audio_segment(row: dict[str, Any]) -> AudioSegment:
@@ -215,9 +233,9 @@ def main() -> None:
     if "audio" not in dataset.column_names:
         raise RuntimeError("Dataset has no audio column")
     dataset = dataset.cast_column("audio", Audio(decode=False))
-    standard, hard = choose_windows(find_candidates(dataset))
+    standard, hard, expert = choose_windows(find_candidates(dataset))
 
-    for label, window in (("standard", standard), ("hard", hard)):
+    for label, window in (("standard", standard), ("hard", hard), ("expert", expert)):
         print(
             f"{label}: meeting={window.meeting_id} window={window.start:.1f}-{window.end:.1f}s "
             f"speakers={window.speakers} turns={window.turns} overlap={window.overlap_seconds:.1f}s"
@@ -227,7 +245,8 @@ def main() -> None:
 
     export_upload_insert(dataset, standard, "clip-1", "Clip 1 — Standard", "standard", 1)
     export_upload_insert(dataset, hard, "clip-2", "Clip 2 — Challenging", "hard", 2)
-    print("Uploaded trial-audio/clip-1.mp3 and clip-2.mp3; clip rows upserted.")
+    export_upload_insert(dataset, expert, "clip-3", "Clip 3 — Expert", "hard", 3)
+    print("Uploaded trial-audio/clip-1.mp3, clip-2.mp3, and clip-3.mp3; clip rows upserted.")
 
 
 if __name__ == "__main__":

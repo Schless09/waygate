@@ -78,21 +78,23 @@ export default async function AdminPage({
       <div className="mt-8 overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((candidate) => {
               const byClip = (order: number) => candidate.attempts.find((attempt) => one(attempt.clip)?.sort_order === order);
               const first = byClip(1);
               const second = byClip(2);
+              const third = byClip(3);
               return (
                 <tr key={candidate.id} className="hover:bg-slate-50">
                   <td className="p-4"><Link href={`/admin/candidate/${candidate.id}`} className="font-medium underline-offset-2 hover:underline">{candidate.name}</Link><span className="block text-slate-500">{candidate.email}</span></td>
                   <td className="p-4 text-slate-600">{new Date(candidate.created_at).toLocaleDateString()}</td>
                   <td className="p-4">{one(first?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
                   <td className="p-4">{one(second?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
+                  <td className="p-4">{one(third?.score ?? null)?.total_score?.toFixed(1) ?? "—"}</td>
                   <td className="p-4 font-semibold">{candidate.overall?.toFixed(1) ?? "—"}</td>
-                  <td className="p-4 text-slate-600">{[first, second].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
+                  <td className="p-4 text-slate-600">{[first, second, third].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
                   <td className="p-4 capitalize">{candidate.status}</td>
                 </tr>
               );

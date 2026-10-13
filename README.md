@@ -1,12 +1,12 @@
 # Waygate audio annotation trial
 
-A small, server-timed assessment for candidates to transcribe two meeting clips.
+A small, server-timed assessment for candidates to transcribe three meeting clips.
 Built with Next.js App Router, Supabase, and Anthropic, and designed for Vercel.
 
 ## What it includes
 
 - Candidate sign-in with one completed attempt per email
-- Two timed tasks with audio controls, hotkeys, local autosave, and telemetry
+- Three timed tasks with audio controls, hotkeys, local autosave, and telemetry
 - Server-only references and one-hour Supabase Storage signed URLs
 - Deterministic WER/pace scoring plus Claude speaker/format scoring
 - Password-protected admin results, re-scoring, and CSV export

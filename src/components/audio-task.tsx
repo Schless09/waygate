@@ -177,7 +177,7 @@ export function AudioTask({
     try {
       localStorage.removeItem(storageKey);
     } catch {}
-    router.push(body.complete ? "/done" : "/task/clip-2");
+    router.push(body.complete ? "/done" : `/task/${body.nextSlug}`);
     router.refresh();
   }
 
@@ -198,7 +198,7 @@ export function AudioTask({
     <section>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-slate-500">Clip {step} of 2</p>
+          <p className="text-sm font-medium text-slate-500">Clip {step} of 3</p>
           <h1 className="mt-1 text-2xl font-semibold">{clip.title}</h1>
         </div>
         <div className="rounded-lg bg-slate-100 px-4 py-2 text-right font-mono text-sm">
