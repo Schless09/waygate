@@ -1,8 +1,7 @@
 import "server-only";
 
+import { QUIZ_ANSWERS } from "./quiz";
 import type { ReferenceUtterance } from "./types";
-
-const QUIZ_ANSWERS = [1, 2, 1, 1, 2];
 
 export function quizScore(answers: unknown) {
   if (!Array.isArray(answers) || answers.length !== QUIZ_ANSWERS.length) return null;
