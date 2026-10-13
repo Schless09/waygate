@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { ReferenceUtterance, Telemetry } from "./types";
+import type { ReferenceUtterance } from "./types";
 
 const QUIZ_ANSWERS = [1, 2, 1, 1, 2];
 
@@ -35,26 +35,4 @@ export function tagUsage(transcript: string, utterances: ReferenceUtterance[]) {
     crosstalk: transcript.match(/\[crosstalk\]/gi)?.length ?? 0,
     overlapsInAudio: overlaps,
   };
-}
-
-export function effortFlags(
-  telemetry: Partial<Telemetry> | null,
-  durationSeconds: number,
-  activeSeconds: number | null,
-) {
-  if (!telemetry) return [];
-  const flags: string[] = [];
-  const playTime = telemetry.totalPlayTime ?? 0;
-  if (playTime < durationSeconds * 0.8) {
-    flags.push(`Played only ${Math.round((100 * playTime) / durationSeconds)}% of the clip`);
-  }
-  if (!telemetry.rewindCount) flags.push("Never rewound the audio");
-  if ((telemetry.blurCount ?? 0) >= 5) flags.push(`Left the tab ${telemetry.blurCount} times`);
-  if ((telemetry.pastedChars ?? 0) >= 200) {
-    flags.push(`Pasted ${telemetry.pastedChars} characters into the transcript`);
-  }
-  if (activeSeconds !== null && activeSeconds < durationSeconds) {
-    flags.push("Submitted faster than the clip length");
-  }
-  return flags;
 }

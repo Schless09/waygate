@@ -1,19 +1,23 @@
 import Link from "next/link";
-import { ArrowDownWideNarrow, Download, LockKeyhole, LogOut, TriangleAlert } from "lucide-react";
+import { ArrowDownWideNarrow, Download, LockKeyhole, LogOut } from "lucide-react";
 import { AdminLogin } from "@/components/admin-actions";
 import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
-import { effortFlags, quizScore } from "@/lib/quality-checks";
-import type { Telemetry } from "@/lib/types";
+import { integrityReport } from "@/lib/integrity";
+import { quizScore } from "@/lib/quality-checks";
+import type { ReferenceUtterance, Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+type ClipRow = { sort_order: number; duration_seconds: number; reference_utterances: ReferenceUtterance[] };
+
 type AttemptRow = {
   active_seconds: number | null;
   submitted_at: string | null;
+  transcript: string | null;
   telemetry: Partial<Telemetry> | null;
-  clip: { sort_order: number; duration_seconds: number } | { sort_order: number; duration_seconds: number }[] | null;
+  clip: ClipRow | ClipRow[] | null;
   score: { total_score: number | null; error: string | null; scored_at: string | null } | { total_score: number | null; error: string | null; scored_at: string | null }[] | null;
 };
 
@@ -48,7 +52,7 @@ export default async function AdminPage({
 
   const { data: assessments, error } = await getSupabaseAdmin()
     .from("trial_assessments")
-    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,telemetry,clip:trial_clips(sort_order,duration_seconds),score:trial_scores(total_score,error,scored_at))")
+    .select("id,role,created_at,completed_at,candidate:trial_candidates(id,name,email),attempts:trial_attempts(active_seconds,submitted_at,transcript,telemetry,clip:trial_clips(sort_order,duration_seconds,reference_utterances),score:trial_scores(total_score,error,scored_at))")
     .order("created_at", { ascending: false });
   if (error) throw error;
 
@@ -66,19 +70,27 @@ export default async function AdminPage({
           ? "scoring"
           : "in progress";
     const quiz = attempts.map((attempt) => quizScore(attempt.telemetry?.quizAnswers)).find(Boolean) ?? null;
-    const flagCount = attempts
+    const integrityScores = attempts
       .filter((attempt) => attempt.submitted_at)
-      .reduce(
-        (sum, attempt) =>
-          sum + effortFlags(attempt.telemetry, one(attempt.clip)?.duration_seconds ?? 0, attempt.active_seconds).length,
-        0,
-      );
+      .map((attempt) => {
+        const clip = one(attempt.clip);
+        return integrityReport({
+          telemetry: attempt.telemetry,
+          transcript: attempt.transcript ?? "",
+          utterances: clip?.reference_utterances ?? [],
+          durationSeconds: clip?.duration_seconds ?? 0,
+          activeSeconds: attempt.active_seconds,
+          role: assessment.role,
+        })?.score;
+      })
+      .filter((value): value is number => value !== undefined);
+    const integrity = integrityScores.length ? Math.min(...integrityScores) : null;
     return {
       ...assessment,
       candidate,
       attempts,
       quiz,
-      flagCount,
+      integrity,
       overall: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
       status,
     };
@@ -104,7 +116,7 @@ export default async function AdminPage({
       <div className="card mt-8 max-h-[75vh] overflow-auto">
         <table className="w-full text-left text-sm">
           <thead className="sticky top-0 z-10 border-b border-brand-100 bg-brand-50/95 text-xs uppercase tracking-wide text-brand-800 backdrop-blur">
-            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Flags</th><th className="p-4">Status</th></tr>
+            <tr><th className="p-4">Candidate</th><th className="p-4">Role</th><th className="p-4">Date</th><th className="p-4">Clip 1</th><th className="p-4">Clip 2</th><th className="p-4">Clip 3</th><th className="p-4">Overall</th><th className="p-4">Time</th><th className="p-4">Quiz</th><th className="p-4">Integrity</th><th className="p-4">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((assessment) => {
@@ -124,11 +136,7 @@ export default async function AdminPage({
                   <td className="whitespace-nowrap p-4 text-slate-600">{[first, second, third].map((attempt) => attempt?.active_seconds ? `${Math.round(attempt.active_seconds / 60)}m` : "—").join(" / ")}</td>
                   <td className="p-4">{assessment.quiz ? `${assessment.quiz.correct}/${assessment.quiz.total}` : "—"}</td>
                   <td className="p-4">
-                    {assessment.flagCount ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
-                        <TriangleAlert className="size-3.5" /> {assessment.flagCount}
-                      </span>
-                    ) : <span className="text-slate-400">—</span>}
+                    <ScorePill value={assessment.integrity} />
                   </td>
                   <td className="p-4"><span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${STATUS_STYLES[assessment.status] ?? ""}`}>{assessment.status}</span></td>
                 </tr>

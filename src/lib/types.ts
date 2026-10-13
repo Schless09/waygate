@@ -7,6 +7,19 @@ export type Telemetry = {
   pasteCount: number;
   pastedChars: number;
   quizAnswers?: number[];
+  pauseCount?: number;
+  longestPlayRun?: number;
+  keystrokes?: number;
+  largeInserts?: number;
+  largeInsertChars?: number;
+  heard?: [number, number][];
+  snapshots?: TranscriptSnapshot[];
+};
+
+export type TranscriptSnapshot = {
+  t: number;
+  heardTo: number;
+  tail: string;
 };
 
 export type ReferenceUtterance = {

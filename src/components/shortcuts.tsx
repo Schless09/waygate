@@ -1,7 +1,13 @@
+const MOD = "Ctrl/⌘";
+const ALT = "Alt/⌥";
+
 const SHORTCUTS = [
-  { keys: ["Space"], label: "Play / pause" },
-  { keys: ["B"], label: "Back 5 seconds", alt: "←" },
-  { keys: ["T"], label: "Insert timestamp" },
+  { keys: [MOD, "Space"], label: "Play / pause" },
+  { keys: [MOD, "B"], alt: "←", label: "Back 5 seconds" },
+  { keys: [MOD, "T"], label: "Insert timestamp" },
+  { keys: [ALT, "1–4"], label: "New turn for Speaker A–D" },
+  { keys: [ALT, "I"], label: "Insert [inaudible]" },
+  { keys: [ALT, "C"], label: "Insert [crosstalk]" },
 ];
 
 export function Shortcuts({ compact = false }: { compact?: boolean }) {
@@ -10,7 +16,7 @@ export function Shortcuts({ compact = false }: { compact?: boolean }) {
       <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {SHORTCUTS.map((shortcut) => (
           <span key={shortcut.label} className="inline-flex items-center gap-1">
-            <kbd>Ctrl/⌘</kbd><kbd>{shortcut.keys[0]}</kbd>
+            {shortcut.keys.map((key) => <kbd key={key}>{key}</kbd>)}
             <span className="ml-0.5">{shortcut.label}</span>
           </span>
         ))}
@@ -22,7 +28,7 @@ export function Shortcuts({ compact = false }: { compact?: boolean }) {
       {SHORTCUTS.map((shortcut) => (
         <div key={shortcut.label} className="contents">
           <dt className="flex items-center gap-1">
-            <kbd>Ctrl/⌘</kbd>+<kbd>{shortcut.keys[0]}</kbd>
+            <kbd>{shortcut.keys[0]}</kbd>+<kbd>{shortcut.keys[1]}</kbd>
             {shortcut.alt && <><span className="text-slate-400">or</span><kbd>{shortcut.alt}</kbd></>}
           </dt>
           <dd>{shortcut.label}</dd>

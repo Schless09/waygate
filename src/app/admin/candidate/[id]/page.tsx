@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ShieldCheck, TriangleAlert } from "lucide-react";
 import { RescoreButton } from "@/components/admin-actions";
 import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
-import { effortFlags, quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
+import { integrityReport } from "@/lib/integrity";
+import { quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -53,9 +54,17 @@ export default async function CandidateDetail({
           const quiz = quizScore(telemetry?.quizAnswers);
           const timestamps = timestampAccuracy(transcript, utterances);
           const tags = tagUsage(transcript, utterances);
-          const flags = attempt.submitted_at
-            ? effortFlags(telemetry, clip?.duration_seconds ?? 0, attempt.active_seconds)
-            : [];
+          const integrity = attempt.submitted_at
+            ? integrityReport({
+                telemetry,
+                transcript,
+                utterances,
+                durationSeconds: clip?.duration_seconds ?? 0,
+                activeSeconds: attempt.active_seconds,
+                role: assessment?.role ?? "annotator",
+              })
+            : null;
+          const { heard, snapshots, ...telemetrySummary } = telemetry ?? {};
           return (
             <section key={attempt.id} className="card p-6 sm:p-8">
               <div className="flex items-center justify-between gap-4">
@@ -82,14 +91,31 @@ export default async function CandidateDetail({
                   ["[inaudible] tags", String(tags.inaudible)],
                 ].map(([label, value]) => <div key={label} className="rounded-xl p-3 ring-1 ring-slate-200"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-semibold">{value}</dd></div>)}
               </dl>
-              {flags.length > 0 && (
-                <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
-                  <strong className="flex items-center gap-1.5"><TriangleAlert className="size-4" /> Effort red flags</strong>
-                  <div className="mt-3 flex flex-wrap gap-2">{flags.map((flag) => <span key={flag} className="rounded-full bg-white px-3 py-1 text-xs font-medium ring-1 ring-amber-200">{flag}</span>)}</div>
+              {integrity && (
+                <div className={`mt-4 rounded-xl p-4 text-sm ring-1 ${integrity.reasons.length ? "bg-amber-50 text-amber-900 ring-amber-200" : "bg-emerald-50 text-emerald-900 ring-emerald-200"}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <strong className="flex items-center gap-1.5">
+                      {integrity.reasons.length ? <TriangleAlert className="size-4" /> : <ShieldCheck className="size-4" />} Integrity
+                    </strong>
+                    <ScorePill value={integrity.score} />
+                  </div>
+                  {integrity.reasons.length > 0 ? (
+                    <ul className="mt-3 space-y-1.5">
+                      {integrity.reasons.map((reason) => (
+                        <li key={reason.label} className="flex items-start justify-between gap-4">
+                          <span>{reason.label}</span>
+                          <span className="shrink-0 font-semibold tabular-nums">−{reason.penalty}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2">No suspicious behaviour detected.</p>
+                  )}
+                  <p className="mt-3 text-xs opacity-70">Review the evidence before acting; each signal can have an innocent explanation.</p>
                 </div>
               )}
               <div className="mt-6 grid gap-5 lg:grid-cols-3">
-                <div><h3 className="text-sm font-semibold">Telemetry</h3><pre className="mt-2 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{JSON.stringify(attempt.telemetry, null, 2)}</pre></div>
+                <div><h3 className="text-sm font-semibold">Telemetry</h3><pre className="mt-2 overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{telemetry ? JSON.stringify({ ...telemetrySummary, heardRanges: heard?.length, snapshots: snapshots?.length }, null, 2) : "—"}</pre></div>
                 <div><h3 className="text-sm font-semibold">Strengths</h3><ul className="mt-2 list-disc pl-5 text-sm text-slate-700">{((feedback.strengths as string[]) ?? []).map((item) => <li key={item}>{item}</li>)}</ul></div>
                 <div><h3 className="text-sm font-semibold">Weaknesses</h3><ul className="mt-2 list-disc pl-5 text-sm text-slate-700">{((feedback.weaknesses as string[]) ?? []).map((item) => <li key={item}>{item}</li>)}</ul></div>
               </div>

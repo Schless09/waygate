@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AudioLines, BookOpen, CloudCheck, Pause, Play, RotateCcw, RotateCw, Send, X } from "lucide-react";
 import { Shortcuts } from "@/components/shortcuts";
 import { quizStorageKey } from "@/lib/quiz";
-import type { ClipSummary, Telemetry } from "@/lib/types";
+import type { ClipSummary, Telemetry, TranscriptSnapshot } from "@/lib/types";
 
 type Attempt = { id: string; started_at: string; submitted_at: string | null } | null;
 
@@ -14,6 +14,16 @@ const formatTime = (seconds: number) => {
   return `${Math.floor(safe / 60).toString().padStart(2, "0")}:${Math.floor(safe % 60)
     .toString()
     .padStart(2, "0")}`;
+};
+
+const heardRanges = (seconds: Set<number>) => {
+  const ranges: [number, number][] = [];
+  for (const second of [...seconds].sort((a, b) => a - b)) {
+    const last = ranges.at(-1);
+    if (last && second <= last[1] + 1) last[1] = second;
+    else ranges.push([second, second]);
+  }
+  return ranges;
 };
 
 export function AudioTask({
@@ -40,8 +50,17 @@ export function AudioTask({
     blurCount: 0,
     pasteCount: 0,
     pastedChars: 0,
+    pauseCount: 0,
+    longestPlayRun: 0,
+    keystrokes: 0,
+    largeInserts: 0,
+    largeInsertChars: 0,
   });
   const playStartedRef = useRef<number | null>(null);
+  const playRunStartedRef = useRef<number | null>(null);
+  const heardRef = useRef(new Set<number>());
+  const snapshotsRef = useRef<TranscriptSnapshot[]>([]);
+  const transcriptRef = useRef(initialTranscript);
   const storageKey = `waygate-transcript-${clip.slug}`;
   const [attempt, setAttempt] = useState(initialAttempt);
   const [transcript, setTranscript] = useState(initialTranscript);
@@ -103,6 +122,52 @@ export function AudioTask({
 
   useEffect(() => () => flushPlayTime(), [flushPlayTime]);
 
+  const endPlayRun = useCallback((restart: boolean) => {
+    const telemetry = telemetryRef.current;
+    if (playRunStartedRef.current !== null) {
+      const run = (performance.now() - playRunStartedRef.current) / 1000;
+      telemetry.longestPlayRun = Math.max(telemetry.longestPlayRun ?? 0, run);
+    }
+    playRunStartedRef.current = restart ? performance.now() : null;
+  }, []);
+
+  const startedAt = attempt?.started_at;
+  const takeSnapshot = useCallback(() => {
+    if (!startedAt) return;
+    const snapshots = snapshotsRef.current;
+    const tail = transcriptRef.current.slice(-400);
+    if (snapshots.length >= 150 || snapshots.at(-1)?.tail === tail) return;
+    snapshots.push({
+      t: Math.round((Date.now() - Date.parse(startedAt)) / 1000),
+      heardTo: Math.max(0, ...heardRef.current),
+      tail,
+    });
+  }, [startedAt]);
+
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
+  useEffect(() => {
+    const timer = window.setInterval(takeSnapshot, 20000);
+    return () => window.clearInterval(timer);
+  }, [takeSnapshot]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const onBeforeInput = (event: InputEvent) => {
+      if (event.inputType === "insertFromPaste") return;
+      const inserted = event.data ?? event.dataTransfer?.getData("text") ?? "";
+      if (inserted.length >= 20) {
+        telemetryRef.current.largeInserts = (telemetryRef.current.largeInserts ?? 0) + 1;
+        telemetryRef.current.largeInsertChars = (telemetryRef.current.largeInsertChars ?? 0) + inserted.length;
+      }
+    };
+    textarea.addEventListener("beforeinput", onBeforeInput);
+    return () => textarea.removeEventListener("beforeinput", onBeforeInput);
+  }, [attempt]);
+
   const togglePlay = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -116,25 +181,45 @@ export function AudioTask({
     audio.currentTime = Math.max(0, Math.min(audio.duration || clip.duration_seconds, audio.currentTime + amount));
     telemetryRef.current.seekCount += 1;
     if (amount < 0) telemetryRef.current.rewindCount += 1;
-  }, [clip.duration_seconds]);
+    if (!audio.paused) endPlayRun(true);
+  }, [clip.duration_seconds, endPlayRun]);
 
-  const insertTimestamp = useCallback(() => {
+  const insertText = useCallback((text: string, onNewLine = false) => {
     const textarea = textareaRef.current;
     if (!textarea) return;
-    const timestamp = `[${formatTime(audioRef.current?.currentTime ?? 0)}] `;
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    setTranscript((value) => `${value.slice(0, start)}${timestamp}${value.slice(end)}`);
+    const before = textarea.value.slice(0, start);
+    const insert = onNewLine && before && !before.endsWith("\n") ? `\n${text}` : text;
+    telemetryRef.current.keystrokes = (telemetryRef.current.keystrokes ?? 0) + insert.length;
+    setTranscript((value) => `${value.slice(0, start)}${insert}${value.slice(end)}`);
     requestAnimationFrame(() => {
       textarea.focus();
-      textarea.setSelectionRange(start + timestamp.length, start + timestamp.length);
+      textarea.setSelectionRange(start + insert.length, start + insert.length);
     });
   }, []);
+
+  const insertTimestamp = useCallback(
+    () => insertText(`[${formatTime(audioRef.current?.currentTime ?? 0)}] `),
+    [insertText],
+  );
 
   useEffect(() => {
     const hotkeys = (event: KeyboardEvent) => {
       if (event.key === "Escape" && instructionsOpen) {
         setInstructionsOpen(false);
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey) {
+        const speaker = { Digit1: "A", Digit2: "B", Digit3: "C", Digit4: "D" }[event.code];
+        const tag = { KeyI: "[inaudible] ", KeyC: "[crosstalk] " }[event.code];
+        if (speaker) {
+          event.preventDefault();
+          insertText(`[${formatTime(audioRef.current?.currentTime ?? 0)}] Speaker ${speaker}: `, true);
+        } else if (tag) {
+          event.preventDefault();
+          insertText(tag);
+        }
         return;
       }
       if (!event.ctrlKey && !event.metaKey) return;
@@ -151,7 +236,7 @@ export function AudioTask({
     };
     window.addEventListener("keydown", hotkeys, { capture: true });
     return () => window.removeEventListener("keydown", hotkeys, { capture: true });
-  }, [insertTimestamp, instructionsOpen, seekBy, togglePlay]);
+  }, [insertText, insertTimestamp, instructionsOpen, seekBy, togglePlay]);
 
   async function start() {
     setBusy(true);
@@ -174,6 +259,8 @@ export function AudioTask({
     }
     if (!window.confirm("Submit this transcript? You will not be able to edit it afterward.")) return;
     flushPlayTime();
+    endPlayRun(!audioRef.current?.paused);
+    takeSnapshot();
     setBusy(true);
     setError("");
     let quizAnswers: number[] | undefined;
@@ -189,6 +276,9 @@ export function AudioTask({
         telemetry: {
           ...telemetryRef.current,
           totalPlayTime: Math.round(telemetryRef.current.totalPlayTime * 10) / 10,
+          longestPlayRun: Math.round(telemetryRef.current.longestPlayRun ?? 0),
+          heard: heardRanges(heardRef.current),
+          snapshots: snapshotsRef.current,
           quizAnswers,
         },
       }),
@@ -302,18 +392,28 @@ export function AudioTask({
         src={clip.audioUrl}
         preload="metadata"
         onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onTimeUpdate={(event) => {
+          const audio = event.currentTarget;
+          setCurrentTime(audio.currentTime);
+          if (!audio.paused) heardRef.current.add(Math.floor(audio.currentTime));
+        }}
         onPlay={() => {
           setPlaying(true);
           playStartedRef.current = performance.now();
+          playRunStartedRef.current = performance.now();
         }}
-        onPause={() => {
+        onPause={(event) => {
           setPlaying(false);
           flushPlayTime();
+          endPlayRun(false);
+          if (!event.currentTarget.ended) {
+            telemetryRef.current.pauseCount = (telemetryRef.current.pauseCount ?? 0) + 1;
+          }
         }}
         onEnded={() => {
           setPlaying(false);
           flushPlayTime();
+          endPlayRun(false);
         }}
       />
       <div className="card sticky top-3 z-30 p-4 sm:p-5">
@@ -360,6 +460,7 @@ export function AudioTask({
           onChange={(event) => {
             if (audioRef.current) audioRef.current.currentTime = Number(event.target.value);
             telemetryRef.current.seekCount += 1;
+            if (audioRef.current && !audioRef.current.paused) endPlayRun(true);
           }}
           style={{ "--progress": `${(100 * currentTime) / (duration || clip.duration_seconds)}%` } as CSSProperties}
           className="scrubber mt-4 w-full cursor-pointer"
@@ -375,6 +476,12 @@ export function AudioTask({
           ref={textareaRef}
           value={transcript}
           onChange={(event) => setTranscript(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            if (event.key.length === 1 || ["Backspace", "Delete", "Enter"].includes(event.key)) {
+              telemetryRef.current.keystrokes = (telemetryRef.current.keystrokes ?? 0) + 1;
+            }
+          }}
           onPaste={(event) => {
             telemetryRef.current.pasteCount += 1;
             telemetryRef.current.pastedChars += event.clipboardData.getData("text").length;

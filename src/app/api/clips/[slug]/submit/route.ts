@@ -13,6 +13,16 @@ const telemetrySchema = z.object({
   pasteCount: z.number().int().min(0).default(0),
   pastedChars: z.number().int().min(0).default(0),
   quizAnswers: z.array(z.number().int().min(-1).max(3)).max(10).optional(),
+  pauseCount: z.number().int().min(0).optional(),
+  longestPlayRun: z.number().min(0).finite().optional(),
+  keystrokes: z.number().int().min(0).optional(),
+  largeInserts: z.number().int().min(0).optional(),
+  largeInsertChars: z.number().int().min(0).optional(),
+  heard: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).max(1000).optional(),
+  snapshots: z
+    .array(z.object({ t: z.number().int().min(0), heardTo: z.number().min(0), tail: z.string().max(500) }))
+    .max(200)
+    .optional(),
 });
 
 const inputSchema = z.object({
