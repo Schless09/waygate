@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { ArrowLeft, TriangleAlert } from "lucide-react";
 import { RescoreButton } from "@/components/admin-actions";
+import { ScorePill } from "@/components/score-pill";
 import { isAdmin } from "@/lib/auth";
 import { effortFlags, quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
@@ -33,9 +35,9 @@ export default async function CandidateDetail({
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-12">
-      <Link href="/admin" className="text-sm text-slate-600 hover:text-slate-900">← All candidates</Link>
+      <Link href="/admin" className="inline-flex items-center gap-1 text-sm font-medium text-brand-700 hover:text-brand-900"><ArrowLeft className="size-4" /> All candidates</Link>
       <div className="mt-6">
-        <h1 className="text-3xl font-semibold">{candidate.name}</h1>
+        <h1 className="text-3xl font-medium tracking-tight">{candidate.name}</h1>
         <p className="mt-1 text-slate-600">{candidate.email}</p>
       </div>
 
@@ -55,35 +57,35 @@ export default async function CandidateDetail({
             ? effortFlags(telemetry, clip?.duration_seconds ?? 0, attempt.active_seconds)
             : [];
           return (
-            <section key={attempt.id} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <section key={attempt.id} className="card p-6 sm:p-8">
               <div className="flex items-center justify-between gap-4">
-                <div><p className="text-sm capitalize text-slate-500">{assessment?.role === "qa" ? "QA reviewer" : "Annotator"} · Clip {clip?.sort_order}</p><h2 className="text-xl font-semibold">{clip?.title}</h2></div>
+                <div><p className="eyebrow">{assessment?.role === "qa" ? "QA reviewer" : "Annotator"} · Clip {clip?.sort_order}</p><h2 className="mt-1 text-xl font-medium tracking-tight">{clip?.title}</h2></div>
+                <div className="ml-auto text-right"><p className="text-xs text-slate-500">Total</p><div className="mt-1 text-lg"><ScorePill value={score?.total_score} /></div></div>
                 {attempt.submitted_at && <RescoreButton attemptId={attempt.id} />}
               </div>
               {score?.error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{score.error}</p>}
-              <dl className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+              <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                 {[
-                  ["Total", scoreValue(score?.total_score)],
                   ["Transcription", scoreValue(score?.transcription_score)],
                   ["Speaker", scoreValue(score?.speaker_score)],
                   ["Pace", scoreValue(score?.pace_score)],
                   ["Format", scoreValue(score?.format_score)],
                   ["WER", scoreValue(score?.wer)],
                   ["Pace ratio", scoreValue(score?.pace_ratio)],
-                ].map(([label, value]) => <div key={label} className="rounded-lg bg-slate-50 p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}
+                ].map(([label, value]) => <div key={label} className="rounded-xl bg-brand-50/60 p-3 ring-1 ring-brand-100"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}
               </dl>
-              <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   ["Guideline quiz", quiz ? `${quiz.correct}/${quiz.total}` : "—"],
                   ["Timestamps", timestamps.count ? `${timestamps.count} · median drift ${timestamps.medianDrift?.toFixed(0)}s` : "None"],
                   ["[crosstalk] tags", `${tags.crosstalk} · ${tags.overlapsInAudio} overlaps in audio`],
                   ["[inaudible] tags", String(tags.inaudible)],
-                ].map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 p-3"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-semibold">{value}</dd></div>)}
+                ].map(([label, value]) => <div key={label} className="rounded-xl p-3 ring-1 ring-slate-200"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 text-sm font-semibold">{value}</dd></div>)}
               </dl>
               {flags.length > 0 && (
-                <div className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
-                  <strong>Effort red flags</strong>
-                  <ul className="mt-2 list-disc pl-5">{flags.map((flag) => <li key={flag}>{flag}</li>)}</ul>
+                <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+                  <strong className="flex items-center gap-1.5"><TriangleAlert className="size-4" /> Effort red flags</strong>
+                  <div className="mt-3 flex flex-wrap gap-2">{flags.map((flag) => <span key={flag} className="rounded-full bg-white px-3 py-1 text-xs font-medium ring-1 ring-amber-200">{flag}</span>)}</div>
                 </div>
               )}
               <div className="mt-6 grid gap-5 lg:grid-cols-3">

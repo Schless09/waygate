@@ -1,3 +1,4 @@
+import { ArrowRight, PartyPopper } from "lucide-react";
 import { redirect } from "next/navigation";
 import { Progress } from "@/components/progress";
 import { getCandidate } from "@/lib/auth";
@@ -23,12 +24,19 @@ export default async function DonePage({
   return (
     <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-12 sm:py-16">
       <Progress current={4} />
-      <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
-        <div className="mx-auto grid size-12 place-items-center rounded-full bg-emerald-100 text-xl text-emerald-800">✓</div>
-        <h1 className="mt-5 text-3xl font-semibold">Thanks, we&apos;ll be in touch.</h1>
-        <p className="mt-3 text-slate-600">Your {role === "qa" ? "QA reviewer" : "annotation"} assessment has been submitted successfully.</p>
-        <a href="/assessments" className="mt-7 inline-block rounded-lg border border-slate-300 px-5 py-3 font-medium">
-          View other assessments
+      <div className="card p-12 text-center">
+        <div className="relative mx-auto grid size-16 place-items-center">
+          <span className="absolute inset-0 animate-ping rounded-full bg-brand-200 opacity-60 [animation-iteration-count:2]" />
+          <span className="relative grid size-16 place-items-center rounded-full bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lg shadow-brand-600/30">
+            <PartyPopper className="size-7" />
+          </span>
+        </div>
+        <h1 className="mt-6 text-3xl font-medium tracking-tight">Submitted. Thank you!</h1>
+        <p className="mx-auto mt-3 max-w-md text-slate-600">
+          Your {role === "qa" ? "QA reviewer" : "annotation"} assessment is in. Our team will review it and be in touch soon.
+        </p>
+        <a href="/assessments" className="btn-secondary mt-8">
+          View other assessments <ArrowRight className="size-4" />
         </a>
       </div>
     </main>

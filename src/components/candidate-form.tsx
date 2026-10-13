@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight } from "lucide-react";
 
 export function CandidateForm() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export function CandidateForm() {
           autoComplete="name"
           required
           minLength={2}
-          className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-600"
+          className="field"
         />
       </label>
       <label className="block">
@@ -46,15 +47,15 @@ export function CandidateForm() {
           type="email"
           autoComplete="email"
           required
-          className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-slate-600"
+          className="field"
         />
       </label>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
       <button
         disabled={loading}
-        className="w-full rounded-lg bg-slate-900 px-5 py-3 font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="btn-primary w-full"
       >
-        {loading ? "Starting…" : "Continue"}
+        {loading ? "Starting…" : <>Continue <ArrowRight className="size-4" /></>}
       </button>
     </form>
   );

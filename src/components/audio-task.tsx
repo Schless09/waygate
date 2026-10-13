@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AudioLines, BookOpen, CloudCheck, Pause, Play, RotateCcw, RotateCw, Send, X } from "lucide-react";
+import { Shortcuts } from "@/components/shortcuts";
 import { quizStorageKey } from "@/lib/quiz";
 import type { ClipSummary, Telemetry } from "@/lib/types";
 
@@ -206,12 +208,16 @@ export function AudioTask({
 
   if (!attempt) {
     return (
-      <section className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-semibold">{clip.title}</h1>
+      <section className="card p-10 text-center">
+        <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 ring-1 ring-brand-100">
+          <AudioLines className="size-7" />
+        </span>
+        <p className="eyebrow mt-5">Clip {step} of 3</p>
+        <h1 className="mt-2 text-2xl font-medium tracking-tight">{clip.title}</h1>
         <p className="mt-3 text-slate-600">Your server-timed attempt begins when you click start.</p>
         {error && <p className="mt-4 text-sm text-red-700">{error}</p>}
-        <button onClick={start} disabled={busy} className="mt-7 rounded-lg bg-slate-900 px-6 py-3 font-medium text-white disabled:opacity-50">
-          {busy ? "Starting…" : `Start Clip ${step}`}
+        <button onClick={start} disabled={busy} className="btn-primary mt-7 px-7">
+          {busy ? "Starting…" : <><Play className="size-4 fill-current" /> Start Clip {step}</>}
         </button>
       </section>
     );
@@ -221,19 +227,22 @@ export function AudioTask({
     <section>
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-slate-500">Clip {step} of 3</p>
-          <h1 className="mt-1 text-2xl font-semibold">{clip.title}</h1>
+          <p className="eyebrow">Clip {step} of 3</p>
+          <h1 className="mt-1 text-2xl font-medium tracking-tight">{clip.title}</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setInstructionsOpen(true)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
-          >
-            Instructions
+          <button onClick={() => setInstructionsOpen(true)} className="btn-secondary">
+            <BookOpen className="size-4" /> Instructions
           </button>
-          <div className="rounded-lg bg-slate-100 px-4 py-2 text-right font-mono text-sm">
-            <span className="block text-[10px] uppercase tracking-wider text-slate-500">Elapsed</span>
-            {formatTime(elapsed)}
+          <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-2 ring-1 ring-brand-100">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-brand-400 opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-brand-600" />
+            </span>
+            <span className="text-right">
+              <span className="block text-[10px] font-medium uppercase tracking-wider text-slate-500">Elapsed</span>
+              <span className="font-mono text-sm tabular-nums">{formatTime(elapsed)}</span>
+            </span>
           </div>
         </div>
       </div>
@@ -242,7 +251,7 @@ export function AudioTask({
         <div className="fixed inset-0 z-50">
           <button
             aria-label="Close instructions"
-            className="absolute inset-0 cursor-default bg-slate-950/30"
+            className="absolute inset-0 cursor-default bg-[#14122b]/30 backdrop-blur-[2px]"
             onClick={() => setInstructionsOpen(false)}
           />
           <aside
@@ -253,18 +262,13 @@ export function AudioTask({
           >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
-                  {mode === "qa" ? "QA reviewer" : "Annotator"}
-                </p>
-                <h2 id="instructions-title" className="mt-2 text-2xl font-semibold">
+                <p className="eyebrow">{mode === "qa" ? "QA reviewer" : "Annotator"}</p>
+                <h2 id="instructions-title" className="mt-2 text-2xl font-medium tracking-tight">
                   Instructions
                 </h2>
               </div>
-              <button
-                onClick={() => setInstructionsOpen(false)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
-              >
-                Close
+              <button onClick={() => setInstructionsOpen(false)} className="control-button" aria-label="Close">
+                <X className="size-4" />
               </button>
             </div>
             <p className="mt-6 leading-7 text-slate-600">
@@ -273,22 +277,18 @@ export function AudioTask({
                 : "Create an accurate transcript of the clip using the required format below."}
             </p>
             <h3 className="mt-7 font-semibold">Required format</h3>
-            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700 marker:text-brand-400 [&_code]:rounded [&_code]:bg-brand-50 [&_code]:px-1 [&_code]:text-brand-700">
               <li>Use one speaker turn per line.</li>
               <li>Label speakers A, B, C, D in order of first appearance.</li>
               <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
               <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
             </ul>
-            <div className="mt-6 rounded-lg bg-slate-100 p-4 font-mono text-xs leading-6">
+            <div className="mt-6 rounded-xl bg-[#14122b] p-4 font-mono text-xs leading-6 text-brand-100">
               <p>[00:03] Speaker A: Should we review the launch plan?</p>
               <p>[00:07] Speaker B: Yes, the first item is [inaudible].</p>
             </div>
             <h3 className="mt-7 font-semibold">Keyboard shortcuts</h3>
-            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm text-slate-700">
-              <dt className="font-mono">Ctrl/⌘ + Space</dt><dd>Play or pause</dd>
-              <dt className="font-mono">Ctrl/⌘ + B or Left Arrow</dt><dd>Skip back 5 seconds</dd>
-              <dt className="font-mono">Ctrl/⌘ + T</dt><dd>Insert the current timestamp</dd>
-            </dl>
+            <div className="mt-3"><Shortcuts /></div>
             <p className="mt-8 text-xs leading-5 text-slate-500">
               Opening these instructions does not pause the server-side assessment timer.
             </p>
@@ -315,14 +315,24 @@ export function AudioTask({
           flushPlayTime();
         }}
       />
-      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="card sticky top-3 z-30 p-4 sm:p-5">
         <div className="flex flex-wrap items-center gap-3">
-          <button onClick={() => seekBy(-5)} className="control-button" aria-label="Skip back 5 seconds">−5s</button>
-          <button onClick={togglePlay} className="min-w-24 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-            {playing ? "Pause" : "Play"}
+          <button onClick={() => seekBy(-5)} className="control-button" aria-label="Skip back 5 seconds" title="Back 5s">
+            <RotateCcw className="size-[18px]" />
           </button>
-          <button onClick={() => seekBy(5)} className="control-button" aria-label="Skip forward 5 seconds">+5s</button>
-          <span className="font-mono text-sm text-slate-600">{formatTime(currentTime)} / {formatTime(duration)}</span>
+          <button
+            onClick={togglePlay}
+            aria-label={playing ? "Pause" : "Play"}
+            className="grid size-12 place-items-center rounded-full bg-brand-600 text-white shadow-md shadow-brand-600/30 transition hover:bg-brand-700 active:scale-95"
+          >
+            {playing ? <Pause className="size-5 fill-current" /> : <Play className="ml-0.5 size-5 fill-current" />}
+          </button>
+          <button onClick={() => seekBy(5)} className="control-button" aria-label="Skip forward 5 seconds" title="Forward 5s">
+            <RotateCw className="size-[18px]" />
+          </button>
+          <span className="ml-1 font-mono text-sm tabular-nums text-slate-600">
+            <span className="text-foreground">{formatTime(currentTime)}</span> / {formatTime(duration)}
+          </span>
           <select
             aria-label="Playback speed"
             value={speed}
@@ -332,7 +342,7 @@ export function AudioTask({
               if (audioRef.current) audioRef.current.playbackRate = value;
               if (!telemetryRef.current.playbackSpeeds.includes(value)) telemetryRef.current.playbackSpeeds.push(value);
             }}
-            className="ml-auto rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            className="ml-auto rounded-full bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 outline-none ring-1 ring-brand-100 focus:ring-brand-300"
           >
             {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((value) => (
               <option key={value} value={value}>{value}x</option>
@@ -350,14 +360,15 @@ export function AudioTask({
             if (audioRef.current) audioRef.current.currentTime = Number(event.target.value);
             telemetryRef.current.seekCount += 1;
           }}
-          className="mt-4 w-full accent-slate-900"
+          style={{ "--progress": `${(100 * currentTime) / (duration || clip.duration_seconds)}%` } as CSSProperties}
+          className="scrubber mt-4 w-full cursor-pointer"
         />
       </div>
 
       <div className="mt-5">
-        <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-          <span>{mode === "qa" ? "Correct the provided transcript" : "One speaker turn per line"}</span>
-          <span>Ctrl/⌘ + Space play · Ctrl/⌘ + B back · Ctrl/⌘ + T timestamp</span>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span className="font-medium text-slate-700">{mode === "qa" ? "Correct the provided transcript" : "One speaker turn per line"}</span>
+          <Shortcuts compact />
         </div>
         <textarea
           ref={textareaRef}
@@ -369,9 +380,11 @@ export function AudioTask({
           }}
           spellCheck={false}
           placeholder="[00:00] Speaker A: Begin typing here…"
-          className="h-[420px] w-full resize-y rounded-xl border border-slate-300 bg-white p-5 font-mono text-sm leading-6 outline-none focus:border-slate-700"
+          className="field h-[420px] resize-y rounded-2xl p-5 font-mono text-sm leading-6 shadow-sm"
         />
-        <p className="mt-2 text-xs text-slate-500">Saved locally every 5 seconds.</p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <CloudCheck className="size-3.5 text-brand-500" /> Saved locally every 5 seconds.
+        </p>
       </div>
       {mode === "qa" && (
         <label className="mt-5 block">
@@ -383,13 +396,13 @@ export function AudioTask({
             value={reviewNotes}
             onChange={(event) => setReviewNotes(event.target.value)}
             required
-            className="h-36 w-full resize-y rounded-xl border border-slate-300 bg-white p-4 text-sm leading-6 outline-none focus:border-slate-700"
+            className="field h-36 resize-y rounded-2xl p-4 text-sm leading-6 shadow-sm"
           />
         </label>
       )}
       {error && <p role="alert" className="mt-4 text-sm text-red-700">{error}</p>}
-      <button onClick={submit} disabled={busy} className="mt-6 w-full rounded-lg bg-slate-900 px-5 py-3 font-medium text-white disabled:opacity-50">
-        {busy ? "Submitting…" : "Submit transcript"}
+      <button onClick={submit} disabled={busy} className="btn-primary mt-6 w-full">
+        {busy ? "Submitting…" : <><Send className="size-4" /> Submit transcript</>}
       </button>
     </section>
   );

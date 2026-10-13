@@ -18,8 +18,8 @@ export default async function AssessmentsPage() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl px-6 py-14">
-      <p className="text-sm font-medium uppercase tracking-wider text-slate-500">Candidate assessments</p>
-      <h1 className="mt-3 text-3xl font-semibold">Choose a role</h1>
+      <p className="eyebrow">Candidate assessments</p>
+      <h1 className="mt-3 text-4xl font-medium tracking-tight">Choose a role</h1>
       <p className="mt-3 max-w-2xl text-slate-600">
         You may complete either or both assessments. Each role uses three different audio clips and can be attempted once.
       </p>
