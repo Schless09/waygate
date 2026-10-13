@@ -125,48 +125,37 @@ def windows_overlap(left: Window, right: Window) -> bool:
 def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Window, Window, Window]:
     by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
     quartile = max(1, len(by_overlap) // 4)
-    standard = max(
-        by_overlap[:quartile],
-        key=lambda item: item.turn_rate - item.overlap_seconds * 0.8 - item.long_silence_seconds,
-    )
-    alternatives = [
-        item
-        for item in by_overlap[-quartile:]
-        if item.meeting_id != standard.meeting_id
-        or abs(item.start - standard.start) >= WINDOW_SECONDS
-    ]
-    hard = max(
-        alternatives,
-        key=lambda item: item.turn_rate * 2 + item.overlap_seconds * 1.5 - item.long_silence_seconds,
-    )
-    third_candidates = [
-        item
-        for item in candidates
-        if not windows_overlap(item, standard) and not windows_overlap(item, hard)
-    ]
-    if not third_candidates:
-        raise RuntimeError("Could not find a third non-overlapping AMI window")
-    expert = max(
-        third_candidates,
-        key=lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
-    )
-    selected = [standard, hard, expert]
-    remaining = [
-        item for item in candidates if not any(windows_overlap(item, chosen) for chosen in selected)
-    ]
-    qa_windows = []
     scorers = (
+        lambda item: item.turn_rate - item.overlap_seconds * 0.8 - item.long_silence_seconds,
+        lambda item: item.turn_rate * 2 + item.overlap_seconds * 1.5 - item.long_silence_seconds,
+        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
         lambda item: item.turn_rate - item.overlap_seconds - item.long_silence_seconds,
         lambda item: item.turn_rate * 2 + item.overlap_seconds - item.long_silence_seconds,
         lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
     )
-    for scorer in scorers:
-        if not remaining:
-            raise RuntimeError("Could not find three distinct QA windows")
-        chosen = max(remaining, key=scorer)
-        qa_windows.append(chosen)
-        remaining = [item for item in remaining if not windows_overlap(item, chosen)]
-    return standard, hard, expert, qa_windows[0], qa_windows[1], qa_windows[2]
+    pools = [
+        sorted(by_overlap[:quartile], key=scorers[0], reverse=True)[:250],
+        *[
+            sorted(candidates, key=scorer, reverse=True)[:250]
+            for scorer in scorers[1:]
+        ],
+    ]
+
+    def select(depth: int, selected: list[Window]) -> list[Window] | None:
+        if depth == len(pools):
+            return selected
+        for candidate in pools[depth]:
+            if any(windows_overlap(candidate, chosen) for chosen in selected):
+                continue
+            result = select(depth + 1, [*selected, candidate])
+            if result:
+                return result
+        return None
+
+    chosen = select(0, [])
+    if not chosen:
+        raise RuntimeError("Could not find six distinct, non-overlapping AMI windows")
+    return tuple(chosen)  # type: ignore[return-value]
 
 
 def audio_segment(row: dict[str, Any]) -> AudioSegment:
