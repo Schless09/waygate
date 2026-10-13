@@ -48,6 +48,7 @@ export function AudioTask({
   const [elapsed, setElapsed] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -127,6 +128,10 @@ export function AudioTask({
 
   useEffect(() => {
     const hotkeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && instructionsOpen) {
+        setInstructionsOpen(false);
+        return;
+      }
       if (!event.ctrlKey) return;
       if (event.code === "Space") {
         event.preventDefault();
@@ -141,7 +146,7 @@ export function AudioTask({
     };
     window.addEventListener("keydown", hotkeys);
     return () => window.removeEventListener("keydown", hotkeys);
-  }, [insertTimestamp, seekBy, togglePlay]);
+  }, [insertTimestamp, instructionsOpen, seekBy, togglePlay]);
 
   async function start() {
     setBusy(true);
@@ -211,11 +216,77 @@ export function AudioTask({
           <p className="text-sm font-medium text-slate-500">Clip {step} of 3</p>
           <h1 className="mt-1 text-2xl font-semibold">{clip.title}</h1>
         </div>
-        <div className="rounded-lg bg-slate-100 px-4 py-2 text-right font-mono text-sm">
-          <span className="block text-[10px] uppercase tracking-wider text-slate-500">Elapsed</span>
-          {formatTime(elapsed)}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setInstructionsOpen(true)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+          >
+            Instructions
+          </button>
+          <div className="rounded-lg bg-slate-100 px-4 py-2 text-right font-mono text-sm">
+            <span className="block text-[10px] uppercase tracking-wider text-slate-500">Elapsed</span>
+            {formatTime(elapsed)}
+          </div>
         </div>
       </div>
+
+      {instructionsOpen && (
+        <div className="fixed inset-0 z-50">
+          <button
+            aria-label="Close instructions"
+            className="absolute inset-0 cursor-default bg-slate-950/30"
+            onClick={() => setInstructionsOpen(false)}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instructions-title"
+            className="absolute inset-y-0 right-0 w-full max-w-md overflow-y-auto bg-white p-7 shadow-2xl sm:p-9"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium uppercase tracking-wider text-slate-500">
+                  {mode === "qa" ? "QA reviewer" : "Annotator"}
+                </p>
+                <h2 id="instructions-title" className="mt-2 text-2xl font-semibold">
+                  Instructions
+                </h2>
+              </div>
+              <button
+                onClick={() => setInstructionsOpen(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium"
+              >
+                Close
+              </button>
+            </div>
+            <p className="mt-6 leading-7 text-slate-600">
+              {mode === "qa"
+                ? "Listen to the clip, correct the provided transcript, and summarize the important errors and their severity in your reviewer notes."
+                : "Create an accurate transcript of the clip using the required format below."}
+            </p>
+            <h3 className="mt-7 font-semibold">Required format</h3>
+            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-700">
+              <li>Use one speaker turn per line.</li>
+              <li>Label speakers A, B, C, D in order of first appearance.</li>
+              <li>Use <code>[inaudible]</code> for unclear words and <code>[crosstalk]</code> for overlapping speech.</li>
+              <li>Use clean verbatim: remove “um” and “uh”, but keep everything else.</li>
+            </ul>
+            <div className="mt-6 rounded-lg bg-slate-100 p-4 font-mono text-xs leading-6">
+              <p>[00:03] Speaker A: Should we review the launch plan?</p>
+              <p>[00:07] Speaker B: Yes, the first item is [inaudible].</p>
+            </div>
+            <h3 className="mt-7 font-semibold">Keyboard shortcuts</h3>
+            <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-3 text-sm text-slate-700">
+              <dt className="font-mono">Ctrl+Space</dt><dd>Play or pause</dd>
+              <dt className="font-mono">Ctrl+Left</dt><dd>Skip back 5 seconds</dd>
+              <dt className="font-mono">Ctrl+T</dt><dd>Insert the current timestamp</dd>
+            </dl>
+            <p className="mt-8 text-xs leading-5 text-slate-500">
+              Opening these instructions does not pause the server-side assessment timer.
+            </p>
+          </aside>
+        </div>
+      )}
 
       <audio
         ref={audioRef}
