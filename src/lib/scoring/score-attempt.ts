@@ -74,7 +74,7 @@ export async function scoreAttempt(attemptId: string) {
   const { data: attempt, error } = await supabase
     .from("attempts")
     .select(
-      "id,transcript,active_seconds,qa_review,assessment:assessments(role),clip:clips(duration_seconds,reference_text,reference_utterances,qa_error_key)",
+      "id,transcript,active_seconds,qa_review,assessment:assessments(role),clip:clips(duration_seconds,reference_text,reference_utterances,qa_source_transcript,qa_error_key)",
     )
     .eq("id", attemptId)
     .single();
@@ -87,7 +87,14 @@ export async function scoreAttempt(attemptId: string) {
   if (!clip) throw new Error("Clip not found");
 
   const wer = wordErrorRate(clip.reference_text, attempt.transcript ?? "");
-  const transcriptionScore = Math.max(0, 100 * (1 - wer));
+  const initialQaWer =
+    assessment?.role === "qa" && clip.qa_source_transcript
+      ? wordErrorRate(clip.reference_text, clip.qa_source_transcript)
+      : null;
+  const transcriptionScore =
+    initialQaWer && initialQaWer > 0
+      ? Math.max(0, Math.min(100, (100 * (initialQaWer - wer)) / initialQaWer))
+      : Math.max(0, 100 * (1 - wer));
   const pace = paceScore(attempt.active_seconds, clip.duration_seconds);
 
   await supabase.from("scores").upsert(
