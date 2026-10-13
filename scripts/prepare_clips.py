@@ -16,7 +16,7 @@ from datasets import Audio, Dataset, load_dataset
 from pydub import AudioSegment
 from supabase import create_client
 
-WINDOW_SECONDS = 300
+WINDOW_SECONDS = 150
 
 
 @dataclass
@@ -68,14 +68,14 @@ def window_metrics(
         if overlap >= max(0.01, (finish - begin) * 0.5):
             included.append(utterance)
     speaker_ids = {str(item["speaker_id"]) for item in included}
-    if len(speaker_ids) not in (3, 4) or len(included) < 20:
+    if len(speaker_ids) not in (3, 4) or len(included) < 10:
         return None
 
     turns = sum(
         str(left["speaker_id"]) != str(right["speaker_id"])
         for left, right in zip(included, included[1:])
     )
-    if turns < 30:
+    if turns < 15:
         return None
     overlaps = sum(
         max(0.0, float(left["end_time"]) - float(right["begin_time"]))
@@ -108,7 +108,7 @@ def find_candidates(dataset: Dataset) -> list[Window]:
         if not utterances:
             continue
         meeting_end = max(float(item["end_time"]) for item in utterances)
-        for start in range(0, max(1, int(meeting_end - WINDOW_SECONDS) + 1), 15):
+        for start in range(0, max(1, int(meeting_end - WINDOW_SECONDS) + 1), 10):
             candidate = window_metrics(row_index, row, float(start), utterances)
             if candidate:
                 candidates.append(candidate)
@@ -124,30 +124,36 @@ def windows_overlap(left: Window, right: Window) -> bool:
     )
 
 
+# Crosstalk bands as a share of the window: short clips with near-constant overlap are
+# untranscribable rather than hard, so each difficulty level is capped.
+DIFFICULTY_OVERLAP = {
+    "standard": (0.0, 0.12),
+    "hard": (0.15, 0.30),
+    "expert": (0.30, 0.50),
+}
+TRACK_LEVELS = ("standard", "hard", "expert", "standard", "hard", "expert")
+
+
 def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Window, Window, Window]:
-    by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
-    quartile = max(1, len(by_overlap) // 4)
-    scorers = (
-        lambda item: item.turn_rate - item.overlap_seconds * 0.8 - item.long_silence_seconds,
-        lambda item: item.turn_rate * 2 + item.overlap_seconds * 1.5 - item.long_silence_seconds,
-        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
-        lambda item: item.turn_rate - item.overlap_seconds - item.long_silence_seconds,
-        lambda item: item.turn_rate * 2 + item.overlap_seconds - item.long_silence_seconds,
-        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
-    )
-    pools = [
-        sorted(by_overlap[:quartile], key=scorers[0], reverse=True)[:250],
-        *[
-            sorted(candidates, key=scorer, reverse=True)[:250]
-            for scorer in scorers[1:]
-        ],
-    ]
+    def pool(level: str) -> list[Window]:
+        low, high = DIFFICULTY_OVERLAP[level]
+        in_band = [
+            item
+            for item in candidates
+            if low * WINDOW_SECONDS <= item.overlap_seconds <= high * WINDOW_SECONDS
+        ]
+        return sorted(in_band, key=lambda item: item.turn_rate - item.long_silence_seconds, reverse=True)[:250]
+
+    pools = [pool(level) for level in TRACK_LEVELS]
 
     def select(depth: int, selected: list[Window]) -> list[Window] | None:
         if depth == len(pools):
             return selected
         for candidate in pools[depth]:
-            if any(windows_overlap(candidate, chosen) for chosen in selected):
+            track = selected[depth - depth % 3 :]
+            if any(windows_overlap(candidate, chosen) for chosen in selected) or any(
+                candidate.meeting_id == chosen.meeting_id for chosen in track
+            ):
                 continue
             result = select(depth + 1, [*selected, candidate])
             if result:
@@ -156,7 +162,7 @@ def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Wi
 
     chosen = select(0, [])
     if not chosen:
-        raise RuntimeError("Could not find six distinct, non-overlapping AMI windows")
+        raise RuntimeError("Could not find six non-overlapping AMI windows with distinct meetings per track")
     return tuple(chosen)  # type: ignore[return-value]
 
 
