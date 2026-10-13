@@ -326,7 +326,9 @@ export function AudioTask({
             }}
             className="ml-auto rounded-lg border border-slate-300 px-3 py-2 text-sm"
           >
-            {[0.75, 1, 1.25, 1.5].map((value) => <option key={value} value={value}>{value}x</option>)}
+            {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((value) => (
+              <option key={value} value={value}>{value}x</option>
+            ))}
           </select>
         </div>
         <input
