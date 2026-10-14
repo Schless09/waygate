@@ -63,7 +63,7 @@ export function normalizeText(text: string) {
     .trim();
 }
 
-const scoringWords = (text: string) =>
+export const scoringWords = (text: string) =>
   normalizeText(text).split(" ").filter((word) => word && !FILLERS.has(word));
 
 export function transcriptCoverage(reference: string, candidate: string) {

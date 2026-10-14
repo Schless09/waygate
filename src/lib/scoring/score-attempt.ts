@@ -12,6 +12,7 @@ import { parsePiiSource, scorePii, type PiiSpan } from "@/lib/pii";
 import type { ReferenceUtterance } from "@/lib/types";
 import { paceScore, transcriptCoverage, trimToReferenceWindow, wordErrorRate } from "./deterministic";
 import { accuracyKeptScore, checkSeededErrors, type QaChecks, type SeededError } from "./qa-checks";
+import { checkSpeakers, type SpeakerCheck } from "./speaker-check";
 
 // Reference speaker IDs are arbitrary corpus labels; relabel them A, B, C, D in
 // order of first appearance so they match the convention candidates are told to use.
@@ -26,13 +27,6 @@ function relabelByFirstAppearance(utterances: ReferenceUtterance[]) {
 }
 
 const claudeResultSchema = z.object({
-  speaker_mapping: z.record(z.string(), z.string()),
-  correct_speaker_count: z.boolean(),
-  pct_words_correct_speaker: z.number().min(0).max(100),
-  missed_turns: z.number().int().min(0),
-  false_turns: z.number().int().min(0),
-  speaker_score: z.number().min(0).max(100),
-  notes: z.string(),
   format_score: z.number().min(0).max(100),
   format_notes: z.string(),
   strengths: z.array(z.string()),
@@ -50,6 +44,7 @@ async function evaluateWithClaude(
   role: string,
   review: unknown,
   qa: { source: string; checks: QaChecks } | null,
+  speakers: SpeakerCheck,
 ) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const roleGuidance = qa
@@ -84,12 +79,13 @@ ${candidate}
 
 Assessment role: ${role}
 ${qaContext}
-Evaluate speaker attribution. Speaker letters are arbitrary: find the best one-to-one mapping from candidate labels to reference labels and score attribution after applying it. A consistent relabeling (for example the candidate's C is the reference's D) is NOT an error and must not be penalized or listed as a weakness. Estimate the percentage of words assigned to the correct speaker after mapping, verify the speaker count, and count missed and false turn changes.
-Clean verbatim is required, so omitted fillers (um, uh, mm-hmm) are correct and must not be counted as missed words or turns. Only short back-channel turns that contain real words (for example "okay", "yeah") count as missed turns.
+Speaker attribution was already measured by script: ${speakers.summary}
+Do not re-score speakers or estimate attribution percentages; if strengths or weaknesses mention speakers, stay consistent with that measurement. Speaker letters are arbitrary, so a consistent relabeling is never a weakness.
+Clean verbatim is required, so omitted fillers (um, uh, mm-hmm) are correct and must not be counted as missing.
 ${roleGuidance}
 
 Return exactly this JSON shape:
-{"speaker_mapping":{},"correct_speaker_count":true,"pct_words_correct_speaker":0,"missed_turns":0,"false_turns":0,"speaker_score":0,"notes":"","format_score":0,"format_notes":"","strengths":[],"weaknesses":[]}`;
+{"format_score":0,"format_notes":"","strengths":[],"weaknesses":[]}`;
 
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -180,13 +176,16 @@ export async function scoreAttempt(attemptId: string) {
   );
 
   try {
-    const feedback = await evaluateWithClaude(
+    const speakers = checkSpeakers(candidateTranscript, utterances);
+    const graded = await evaluateWithClaude(
       relabelByFirstAppearance(utterances),
       candidateTranscript,
       role,
       attempt.qa_review,
       qaSource !== null && qaChecks ? { source: qaSource, checks: qaChecks } : null,
+      speakers,
     );
+    const feedback = { ...graded, speaker_score: speakers.score, notes: speakers.summary, speaker_check: speakers };
     const reviewNotes =
       attempt.qa_review &&
       typeof attempt.qa_review === "object" &&
