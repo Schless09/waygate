@@ -17,6 +17,9 @@ from pydub import AudioSegment
 from supabase import create_client
 
 WINDOW_SECONDS = 150
+# The practice clip is a candidate's first impression: it must open on speech and never go quiet for long.
+PRACTICE_MAX_LEAD_SECONDS = 1.5
+PRACTICE_MAX_GAP_SECONDS = 8.0
 
 
 @dataclass
@@ -29,7 +32,10 @@ class Window:
     speakers: int
     turns: int
     overlap_seconds: float
+    crosstalk_seconds: float
     long_silence_seconds: float
+    lead_seconds: float
+    max_gap_seconds: float
 
     @property
     def turn_rate(self) -> float:
@@ -81,11 +87,14 @@ def window_metrics(
         max(0.0, float(left["end_time"]) - float(right["begin_time"]))
         for left, right in zip(included, included[1:])
     )
-    long_silences = sum(
-        gap
-        for left, right in zip(included, included[1:])
-        if (gap := float(right["begin_time"]) - float(left["end_time"])) > 3
-    )
+    lead = max(0.0, float(included[0]["begin_time"]) - start)
+    gaps = [lead]
+    spoken_until = float(included[0]["end_time"])
+    for item in included[1:]:
+        gaps.append(float(item["begin_time"]) - spoken_until)
+        spoken_until = max(spoken_until, float(item["end_time"]))
+    gaps.append(end - spoken_until)
+    long_silences = sum(gap for gap in gaps if gap > 3)
     return Window(
         row_index=row_index,
         meeting_id=meeting_id(row, row_index),
@@ -95,8 +104,26 @@ def window_metrics(
         speakers=len(speaker_ids),
         turns=turns,
         overlap_seconds=overlaps,
+        crosstalk_seconds=crosstalk_seconds(included, start, end),
         long_silence_seconds=long_silences,
+        lead_seconds=lead,
+        max_gap_seconds=max(gaps),
     )
+
+
+def crosstalk_seconds(utterances: list[dict[str, Any]], start: float, end: float) -> float:
+    events = []
+    for item in utterances:
+        events.append((max(start, float(item["begin_time"])), 1))
+        events.append((min(end, float(item["end_time"])), -1))
+    events.sort()
+    active, previous, total = 0, start, 0.0
+    for time, change in events:
+        if active >= 2:
+            total += time - previous
+        active += change
+        previous = time
+    return total
 
 
 def find_candidates(dataset: Dataset) -> list[Window]:
@@ -108,8 +135,13 @@ def find_candidates(dataset: Dataset) -> list[Window]:
         if not utterances:
             continue
         meeting_end = max(float(item["end_time"]) for item in utterances)
-        for start in range(0, max(1, int(meeting_end - WINDOW_SECONDS) + 1), 10):
-            candidate = window_metrics(row_index, row, float(start), utterances)
+        starts: list[float] = []
+        for item in utterances:
+            start = round(max(0.0, float(item["begin_time"]) - 0.5), 1)
+            if start + WINDOW_SECONDS <= meeting_end and (not starts or start - starts[-1] >= 5):
+                starts.append(start)
+        for start in starts:
+            candidate = window_metrics(row_index, row, start, utterances)
             if candidate:
                 candidates.append(candidate)
     if len(candidates) < 3:
@@ -164,6 +196,19 @@ def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Wi
     if not chosen:
         raise RuntimeError("Could not find six non-overlapping AMI windows with distinct meetings per track")
     return tuple(chosen)  # type: ignore[return-value]
+
+
+def choose_practice(candidates: list[Window], exclude_meetings: list[str]) -> Window:
+    eligible = [
+        item
+        for item in candidates
+        if item.lead_seconds <= PRACTICE_MAX_LEAD_SECONDS
+        and item.max_gap_seconds <= PRACTICE_MAX_GAP_SECONDS
+        and not any(meeting in item.meeting_id for meeting in exclude_meetings)
+    ]
+    if not eligible:
+        raise RuntimeError("No practice window opens on speech without long pauses")
+    return min(eligible, key=lambda item: item.crosstalk_seconds + item.long_silence_seconds)
 
 
 def audio_segment(row: dict[str, Any]) -> AudioSegment:
@@ -287,12 +332,34 @@ def export_upload_insert(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="Choose and print windows without uploading")
+    parser.add_argument(
+        "--practice-only",
+        action="store_true",
+        help="Replace only the annotator practice clip, leaving scored clips untouched",
+    )
+    parser.add_argument(
+        "--exclude-meeting",
+        action="append",
+        default=[],
+        help="Meeting id the practice clip must not come from (e.g. those used by scored clips)",
+    )
     args = parser.parse_args()
 
     dataset = load_dataset("Trelis/tiron-eval-meetings", split="ami")
     if "audio" not in dataset.column_names:
         raise RuntimeError("Dataset has no audio column")
     dataset = dataset.cast_column("audio", Audio(decode=False))
+    if args.practice_only:
+        practice = choose_practice(find_candidates(dataset), args.exclude_meeting)
+        print(
+            f"practice: meeting={practice.meeting_id} window={practice.start:.1f}-{practice.end:.1f}s "
+            f"turns={practice.turns} crosstalk={practice.crosstalk_seconds:.1f}s "
+            f"lead={practice.lead_seconds:.1f}s longest_pause={practice.max_gap_seconds:.1f}s"
+        )
+        if not args.dry_run:
+            export_upload_insert(dataset, practice, "clip-1", "Practice — Standard", "standard", 1, "annotator")
+            print("Uploaded and registered the practice clip.")
+        return
     standard, hard, expert, qa_standard, qa_hard, qa_expert = choose_windows(
         find_candidates(dataset)
     )
