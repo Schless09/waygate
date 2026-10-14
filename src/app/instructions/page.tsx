@@ -41,7 +41,7 @@ export default async function InstructionsPage({
         <h1 className="mt-3 text-3xl font-medium tracking-tight">{isQa ? "QA review instructions" : "Annotation instructions"}</h1>
         <p className="mt-4 leading-7 text-slate-600">
           {isQa
-            ? "You will review two intentionally flawed transcripts against two 2½-minute meeting clips. Correct the transcript and summarize the important errors you found."
+            ? "You will review two intentionally flawed transcripts against two 2½-minute meeting clips. Fix every error directly in the transcript, then list each one in your reviewer notes with its timestamp."
             : "You will transcribe two 2½-minute meeting clips, then tag personal information (PII) in a short customer-call transcript. Work carefully and submit each task when finished. An optional practice round is available first."}{" "}
           Your time starts on the server when you click each start button.
         </p>

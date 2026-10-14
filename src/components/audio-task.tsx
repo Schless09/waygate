@@ -513,11 +513,12 @@ export function AudioTask({
         <label className="mt-5 block">
           <span className="mb-2 block text-sm font-semibold">Reviewer notes</span>
           <span className="mb-2 block text-xs text-slate-500">
-            Summarize the most important errors, their severity, and useful feedback for the annotator.
+            List each error you found with its timestamp, what was wrong, and how you fixed it, then any feedback for the annotator.
           </span>
           <textarea
             value={reviewNotes}
             onChange={(event) => setReviewNotes(event.target.value)}
+            placeholder={"[00:42] Speaker B line belongs to Speaker C — relabeled.\n[01:10] “um” left in — removed for clean verbatim."}
             required
             className="field h-36 resize-y rounded-2xl p-4 text-sm leading-6 shadow-sm"
           />
