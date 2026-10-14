@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCandidate } from "@/lib/auth";
+import { isPracticeClip, PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 export async function POST(
@@ -29,11 +30,12 @@ export async function POST(
     return NextResponse.json({ error: "Assessment unavailable" }, { status: 409 });
   }
 
-  if (clip.sort_order > 1) {
+  if (!isPracticeClip(clip.sort_order)) {
     const { data: priorClips } = await supabase
       .from("trial_clips")
       .select("id")
       .eq("role", clip.role)
+      .gt("sort_order", PRACTICE_SORT_ORDER)
       .lt("sort_order", clip.sort_order);
     const priorIds = (priorClips ?? []).map((item) => item.id);
     const { count } = await supabase

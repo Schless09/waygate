@@ -7,6 +7,7 @@ import argparse
 import io
 import json
 import os
+import random
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,14 @@ from datasets import Audio, Dataset, load_dataset
 from pydub import AudioSegment
 from supabase import create_client
 
-WINDOW_SECONDS = 300
+WINDOW_SECONDS = 150
+# Clips are cut inside pauses so every reference line is fully audible and no audible
+# speech is missing from the reference; the length flexes around WINDOW_SECONDS to find one.
+WINDOW_RANGE_SECONDS = (130.0, 170.0)
+EDGE_PADDING_SECONDS = 0.1
+# The practice clip is a candidate's first impression: it must open on speech and never go quiet for long.
+PRACTICE_MAX_LEAD_SECONDS = 1.5
+PRACTICE_MAX_GAP_SECONDS = 8.0
 
 
 @dataclass
@@ -29,11 +37,18 @@ class Window:
     speakers: int
     turns: int
     overlap_seconds: float
+    crosstalk_seconds: float
     long_silence_seconds: float
+    lead_seconds: float
+    max_gap_seconds: float
+
+    @property
+    def duration(self) -> float:
+        return self.end - self.start
 
     @property
     def turn_rate(self) -> float:
-        return self.turns / (WINDOW_SECONDS / 60)
+        return self.turns / (self.duration / 60)
 
 
 def parse_utterances(value: Any) -> list[dict[str, Any]]:
@@ -57,35 +72,35 @@ def is_ami(row: dict[str, Any]) -> bool:
 
 
 def window_metrics(
-    row_index: int, row: dict[str, Any], start: float, utterances: list[dict[str, Any]]
+    row_index: int, row: dict[str, Any], start: float, end: float, utterances: list[dict[str, Any]]
 ) -> Window | None:
-    end = start + WINDOW_SECONDS
-    included = []
-    for utterance in utterances:
-        begin = float(utterance["begin_time"])
-        finish = float(utterance["end_time"])
-        overlap = max(0.0, min(finish, end) - max(begin, start))
-        if overlap >= max(0.01, (finish - begin) * 0.5):
-            included.append(utterance)
+    included = [
+        item
+        for item in utterances
+        if float(item["begin_time"]) >= start and float(item["end_time"]) <= end
+    ]
     speaker_ids = {str(item["speaker_id"]) for item in included}
-    if len(speaker_ids) not in (3, 4) or len(included) < 20:
+    if len(speaker_ids) not in (3, 4) or len(included) < 10:
         return None
 
     turns = sum(
         str(left["speaker_id"]) != str(right["speaker_id"])
         for left, right in zip(included, included[1:])
     )
-    if turns < 30:
+    if turns < 15:
         return None
     overlaps = sum(
         max(0.0, float(left["end_time"]) - float(right["begin_time"]))
         for left, right in zip(included, included[1:])
     )
-    long_silences = sum(
-        gap
-        for left, right in zip(included, included[1:])
-        if (gap := float(right["begin_time"]) - float(left["end_time"])) > 3
-    )
+    lead = max(0.0, float(included[0]["begin_time"]) - start)
+    gaps = [lead]
+    spoken_until = float(included[0]["end_time"])
+    for item in included[1:]:
+        gaps.append(float(item["begin_time"]) - spoken_until)
+        spoken_until = max(spoken_until, float(item["end_time"]))
+    gaps.append(end - spoken_until)
+    long_silences = sum(gap for gap in gaps if gap > 3)
     return Window(
         row_index=row_index,
         meeting_id=meeting_id(row, row_index),
@@ -95,8 +110,38 @@ def window_metrics(
         speakers=len(speaker_ids),
         turns=turns,
         overlap_seconds=overlaps,
+        crosstalk_seconds=crosstalk_seconds(included, start, end),
         long_silence_seconds=long_silences,
+        lead_seconds=lead,
+        max_gap_seconds=max(gaps),
     )
+
+
+def crosstalk_seconds(utterances: list[dict[str, Any]], start: float, end: float) -> float:
+    events = []
+    for item in utterances:
+        events.append((max(start, float(item["begin_time"])), 1))
+        events.append((min(end, float(item["end_time"])), -1))
+    events.sort()
+    active, previous, total = 0, start, 0.0
+    for time, change in events:
+        if active >= 2:
+            total += time - previous
+        active += change
+        previous = time
+    return total
+
+
+def pauses(utterances: list[dict[str, Any]]) -> list[tuple[float, float]]:
+    """Intervals where nobody is speaking, long enough to cut inside with padding."""
+    silent = []
+    spoken_until = 0.0
+    for item in utterances:
+        begin = float(item["begin_time"])
+        if begin - spoken_until >= 2 * EDGE_PADDING_SECONDS:
+            silent.append((spoken_until, begin))
+        spoken_until = max(spoken_until, float(item["end_time"]))
+    return silent
 
 
 def find_candidates(dataset: Dataset) -> list[Window]:
@@ -107,9 +152,20 @@ def find_candidates(dataset: Dataset) -> list[Window]:
         utterances = parse_utterances(row.get("utterances_json"))
         if not utterances:
             continue
-        meeting_end = max(float(item["end_time"]) for item in utterances)
-        for start in range(0, max(1, int(meeting_end - WINDOW_SECONDS) + 1), 15):
-            candidate = window_metrics(row_index, row, float(start), utterances)
+        silent = pauses(utterances)
+        starts: list[float] = []
+        for _, speech_resumes in silent:
+            start = round(speech_resumes - EDGE_PADDING_SECONDS, 2)
+            if not starts or start - starts[-1] >= 5:
+                starts.append(start)
+        ends = [round(speech_stops + EDGE_PADDING_SECONDS, 2) for speech_stops, _ in silent]
+        for start in starts:
+            low, high = start + WINDOW_RANGE_SECONDS[0], start + WINDOW_RANGE_SECONDS[1]
+            fits = [end for end in ends if low <= end <= high]
+            if not fits:
+                continue
+            end = min(fits, key=lambda value: abs(value - start - WINDOW_SECONDS))
+            candidate = window_metrics(row_index, row, start, end, utterances)
             if candidate:
                 candidates.append(candidate)
     if len(candidates) < 3:
@@ -124,30 +180,36 @@ def windows_overlap(left: Window, right: Window) -> bool:
     )
 
 
+# Crosstalk bands as a share of the window: short clips with near-constant overlap are
+# untranscribable rather than hard, so each difficulty level is capped.
+DIFFICULTY_OVERLAP = {
+    "standard": (0.0, 0.12),
+    "hard": (0.15, 0.30),
+    "expert": (0.30, 0.50),
+}
+TRACK_LEVELS = ("standard", "hard", "expert", "standard", "hard", "expert")
+
+
 def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Window, Window, Window]:
-    by_overlap = sorted(candidates, key=lambda item: item.overlap_seconds)
-    quartile = max(1, len(by_overlap) // 4)
-    scorers = (
-        lambda item: item.turn_rate - item.overlap_seconds * 0.8 - item.long_silence_seconds,
-        lambda item: item.turn_rate * 2 + item.overlap_seconds * 1.5 - item.long_silence_seconds,
-        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
-        lambda item: item.turn_rate - item.overlap_seconds - item.long_silence_seconds,
-        lambda item: item.turn_rate * 2 + item.overlap_seconds - item.long_silence_seconds,
-        lambda item: item.turn_rate * 3 + item.overlap_seconds * 2 - item.long_silence_seconds,
-    )
-    pools = [
-        sorted(by_overlap[:quartile], key=scorers[0], reverse=True)[:250],
-        *[
-            sorted(candidates, key=scorer, reverse=True)[:250]
-            for scorer in scorers[1:]
-        ],
-    ]
+    def pool(level: str) -> list[Window]:
+        low, high = DIFFICULTY_OVERLAP[level]
+        in_band = [
+            item
+            for item in candidates
+            if low * item.duration <= item.overlap_seconds <= high * item.duration
+        ]
+        return sorted(in_band, key=lambda item: item.turn_rate - item.long_silence_seconds, reverse=True)[:250]
+
+    pools = [pool(level) for level in TRACK_LEVELS]
 
     def select(depth: int, selected: list[Window]) -> list[Window] | None:
         if depth == len(pools):
             return selected
         for candidate in pools[depth]:
-            if any(windows_overlap(candidate, chosen) for chosen in selected):
+            track = selected[depth - depth % 3 :]
+            if any(windows_overlap(candidate, chosen) for chosen in selected) or any(
+                candidate.meeting_id == chosen.meeting_id for chosen in track
+            ):
                 continue
             result = select(depth + 1, [*selected, candidate])
             if result:
@@ -156,8 +218,21 @@ def choose_windows(candidates: list[Window]) -> tuple[Window, Window, Window, Wi
 
     chosen = select(0, [])
     if not chosen:
-        raise RuntimeError("Could not find six distinct, non-overlapping AMI windows")
+        raise RuntimeError("Could not find six non-overlapping AMI windows with distinct meetings per track")
     return tuple(chosen)  # type: ignore[return-value]
+
+
+def choose_practice(candidates: list[Window], exclude_meetings: list[str]) -> Window:
+    eligible = [
+        item
+        for item in candidates
+        if item.lead_seconds <= PRACTICE_MAX_LEAD_SECONDS
+        and item.max_gap_seconds <= PRACTICE_MAX_GAP_SECONDS
+        and not any(meeting in item.meeting_id for meeting in exclude_meetings)
+    ]
+    if not eligible:
+        raise RuntimeError("No practice window opens on speech without long pauses")
+    return min(eligible, key=lambda item: item.crosstalk_seconds + item.long_silence_seconds)
 
 
 def audio_segment(row: dict[str, Any]) -> AudioSegment:
@@ -182,7 +257,7 @@ def references(window: Window) -> tuple[list[dict[str, Any]], str]:
         if source_speaker not in speaker_map:
             speaker_map[source_speaker] = chr(ord("A") + len(speaker_map))
         begin = max(0.0, float(item["begin_time"]) - window.start)
-        end = min(WINDOW_SECONDS, float(item["end_time"]) - window.start)
+        end = float(item["end_time"]) - window.start
         output.append(
             {
                 "speaker": speaker_map[source_speaker],
@@ -194,34 +269,61 @@ def references(window: Window) -> tuple[list[dict[str, Any]], str]:
     return output, " ".join(item["text"] for item in output).strip()
 
 
-def qa_source(utterances: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
+def qa_source(utterances: list[dict[str, Any]], seed: str) -> tuple[str, list[dict[str, Any]]]:
     rows = [dict(item) for item in utterances]
     errors: list[dict[str, Any]] = []
-    if len(rows) < 8:
+    if len(rows) < 12:
         raise RuntimeError("QA clip does not contain enough utterances")
 
-    words = rows[1]["text"].split()
-    if len(words) > 2:
-        removed = words[-1]
-        rows[1]["text"] = " ".join(words[:-1])
-        errors.append({"type": "omission", "turn": 2, "detail": f"Missing final word: {removed}"})
+    # Placement varies per clip so the practice round doesn't reveal which lines to check.
+    rng = random.Random(seed)
+    used: set[int] = set()
 
-    original_speaker = rows[3]["speaker"]
-    rows[3]["speaker"] = "A" if original_speaker != "A" else "B"
-    errors.append({"type": "speaker", "turn": 4, "detail": f"Should be Speaker {original_speaker}"})
+    def pick(predicate: Any) -> int:
+        options = [
+            index
+            for index in range(1, len(rows) - 1)
+            if index not in used and index - 1 not in used and index + 1 not in used and predicate(rows[index])
+        ]
+        if not options:
+            raise RuntimeError("QA clip has no eligible line for a planted error")
+        index = rng.choice(options)
+        used.add(index)
+        return index
 
-    rows[5]["begin_time"] += 12
-    errors.append({"type": "timestamp", "turn": 6, "detail": "Timestamp shifted 12 seconds late"})
+    def wordy(row: dict[str, Any]) -> bool:
+        return len(row["text"].split()) >= 5
 
-    rows[6]["text"] = f"um {rows[6]['text']}"
-    errors.append({"type": "clean_verbatim", "turn": 7, "detail": "Inserted filler word 'um'"})
+    index = pick(wordy)
+    words = rows[index]["text"].split()
+    rows[index]["text"] = " ".join(words[:-1])
+    errors.append({"type": "omission", "turn": index + 1, "detail": f"Missing final word: {words[-1]}"})
 
-    replaced_words = rows[7]["text"].split()
-    if replaced_words:
-        replaced = replaced_words[len(replaced_words) // 2]
-        replaced_words[len(replaced_words) // 2] = "[inaudible]"
-        rows[7]["text"] = " ".join(replaced_words)
-        errors.append({"type": "false_inaudible", "turn": 8, "detail": f"Replaced clear word: {replaced}"})
+    speakers = sorted({row["speaker"] for row in rows})
+    index = pick(lambda row: len(row["text"].split()) >= 3)
+    original_speaker = rows[index]["speaker"]
+    rows[index]["speaker"] = rng.choice([speaker for speaker in speakers if speaker != original_speaker])
+    errors.append({"type": "speaker", "turn": index + 1, "detail": f"Should be Speaker {original_speaker}"})
+
+    index = pick(lambda row: len(row["text"].split()) >= 3)
+    rows[index]["begin_time"] += 12
+    errors.append({"type": "timestamp", "turn": index + 1, "detail": "Timestamp shifted 12 seconds late"})
+
+    index = pick(lambda row: not row["text"].lower().startswith(("um", "uh")))
+    rows[index]["text"] = f"um {rows[index]['text']}"
+    errors.append({"type": "clean_verbatim", "turn": index + 1, "detail": "Inserted filler word 'um'"})
+
+    def has_clear_word(row: dict[str, Any]) -> bool:
+        return any(len(word.strip(",.?!")) > 3 for word in row["text"].split()[1:-1])
+
+    index = pick(lambda row: wordy(row) and has_clear_word(row))
+    replaced_words = rows[index]["text"].split()
+    position = rng.choice([i for i in range(1, len(replaced_words) - 1) if len(replaced_words[i].strip(",.?!")) > 3])
+    replaced = replaced_words[position].strip(",.?!")
+    replaced_words[position] = "[inaudible]" + replaced_words[position][len(replaced_words[position].rstrip(",.?!")) :]
+    rows[index]["text"] = " ".join(replaced_words)
+    errors.append({"type": "false_inaudible", "turn": index + 1, "detail": f"Replaced clear word: {replaced}"})
+    errors.sort(key=lambda error: error["turn"])
 
     lines = []
     for item in rows:
@@ -246,7 +348,7 @@ def export_upload_insert(
     clip = audio_segment(dataset[window.row_index])
     cut = clip[int(window.start * 1000) : int(window.end * 1000)].set_channels(1)
     utterances, reference_text = references(window)
-    source_transcript, error_key = qa_source(utterances) if role == "qa" else (None, None)
+    source_transcript, error_key = qa_source(utterances, slug) if role == "qa" else (None, None)
     audio_path = f"{slug}.mp3"
 
     with tempfile.TemporaryDirectory() as directory:
@@ -264,7 +366,7 @@ def export_upload_insert(
             "slug": slug,
             "title": title,
             "audio_path": audio_path,
-            "duration_seconds": WINDOW_SECONDS,
+            "duration_seconds": round(window.duration),
             "speaker_count": window.speakers,
             "reference_utterances": utterances,
             "reference_text": reference_text,
@@ -278,15 +380,98 @@ def export_upload_insert(
     ).execute()
 
 
+def locate_existing(dataset: Dataset, reference: list[dict[str, Any]]) -> tuple[int, float]:
+    """Find the meeting row and source offset an already-uploaded clip was cut from."""
+    anchors = reference[1:7]
+    for row_index, row in enumerate(dataset):
+        utterances = parse_utterances(row.get("utterances_json"))
+        for item in utterances:
+            if str(item["text"]).strip() != anchors[0]["text"]:
+                continue
+            offset = float(item["begin_time"]) - anchors[0]["begin_time"]
+            matched = all(
+                any(
+                    str(other["text"]).strip() == anchor["text"]
+                    and abs(float(other["begin_time"]) - offset - anchor["begin_time"]) < 0.05
+                    for other in utterances
+                )
+                for anchor in anchors[1:]
+            )
+            if matched:
+                return row_index, offset
+    raise RuntimeError(f"Could not locate clip starting with {anchors[0]['text']!r}")
+
+
+def recut_existing(dataset: Dataset, dry_run: bool) -> None:
+    """Re-cut every uploaded audio clip at the pauses nearest its current window."""
+    supabase = create_client(os.environ["NEXT_PUBLIC_SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
+    clips = (
+        supabase.table("trial_clips")
+        .select("slug,title,difficulty,sort_order,role,reference_utterances")
+        .eq("task_type", "audio")
+        .order("role")
+        .order("sort_order")
+        .execute()
+        .data
+    )
+    candidates = find_candidates(dataset)
+    for clip in clips:
+        row_index, offset = locate_existing(dataset, clip["reference_utterances"])
+        nearby = [item for item in candidates if item.row_index == row_index and abs(item.start - offset) <= 20]
+        if not nearby:
+            print(f"{clip['slug']}: no clean window within 20s of {offset:.1f}s; skipped (re-pick it instead)")
+            continue
+        window = min(nearby, key=lambda item: abs(item.start - offset))
+        print(
+            f"{clip['slug']}: meeting={window.meeting_id} was {offset:.1f}s, now {window.start:.2f}-{window.end:.2f}s "
+            f"({window.duration:.1f}s) lines={len(window.utterances)} turns={window.turns} "
+            f"crosstalk={window.crosstalk_seconds:.1f}s longest_pause={window.max_gap_seconds:.1f}s"
+        )
+        if not dry_run:
+            export_upload_insert(
+                dataset, window, clip["slug"], clip["title"], clip["difficulty"], clip["sort_order"], clip["role"]
+            )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="Choose and print windows without uploading")
+    parser.add_argument(
+        "--practice-only",
+        action="store_true",
+        help="Replace only the annotator practice clip, leaving scored clips untouched",
+    )
+    parser.add_argument(
+        "--exclude-meeting",
+        action="append",
+        default=[],
+        help="Meeting id the practice clip must not come from (e.g. those used by scored clips)",
+    )
+    parser.add_argument(
+        "--recut",
+        action="store_true",
+        help="Re-cut the uploaded audio clips at clean pauses near their current windows",
+    )
     args = parser.parse_args()
 
     dataset = load_dataset("Trelis/tiron-eval-meetings", split="ami")
     if "audio" not in dataset.column_names:
         raise RuntimeError("Dataset has no audio column")
     dataset = dataset.cast_column("audio", Audio(decode=False))
+    if args.recut:
+        recut_existing(dataset, args.dry_run)
+        return
+    if args.practice_only:
+        practice = choose_practice(find_candidates(dataset), args.exclude_meeting)
+        print(
+            f"practice: meeting={practice.meeting_id} window={practice.start:.1f}-{practice.end:.1f}s "
+            f"turns={practice.turns} crosstalk={practice.crosstalk_seconds:.1f}s "
+            f"lead={practice.lead_seconds:.1f}s longest_pause={practice.max_gap_seconds:.1f}s"
+        )
+        if not args.dry_run:
+            export_upload_insert(dataset, practice, "clip-1", "Practice — Standard", "standard", 1, "annotator")
+            print("Uploaded and registered the practice clip.")
+        return
     standard, hard, expert, qa_standard, qa_hard, qa_expert = choose_windows(
         find_candidates(dataset)
     )
@@ -307,12 +492,12 @@ def main() -> None:
     if args.dry_run:
         return
 
-    export_upload_insert(dataset, standard, "clip-1", "Clip 1 — Standard", "standard", 1, "annotator")
-    export_upload_insert(dataset, hard, "clip-2", "Clip 2 — Challenging", "hard", 2, "annotator")
-    export_upload_insert(dataset, expert, "clip-3", "Clip 3 — Expert", "hard", 3, "annotator")
-    export_upload_insert(dataset, qa_standard, "qa-clip-1", "QA Clip 1 — Standard", "standard", 1, "qa")
-    export_upload_insert(dataset, qa_hard, "qa-clip-2", "QA Clip 2 — Challenging", "hard", 2, "qa")
-    export_upload_insert(dataset, qa_expert, "qa-clip-3", "QA Clip 3 — Expert", "hard", 3, "qa")
+    export_upload_insert(dataset, standard, "clip-1", "Practice — Standard", "standard", 1, "annotator")
+    export_upload_insert(dataset, hard, "clip-2", "Clip 1 — Challenging", "hard", 2, "annotator")
+    export_upload_insert(dataset, expert, "clip-3", "Clip 2 — Expert", "hard", 3, "annotator")
+    export_upload_insert(dataset, qa_standard, "qa-clip-1", "QA Practice — Standard", "standard", 1, "qa")
+    export_upload_insert(dataset, qa_hard, "qa-clip-2", "QA Clip 1 — Challenging", "hard", 2, "qa")
+    export_upload_insert(dataset, qa_expert, "qa-clip-3", "QA Clip 2 — Expert", "hard", 3, "qa")
     print("Uploaded and registered three annotator clips and three distinct QA clips.")
 
 

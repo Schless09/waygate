@@ -2,6 +2,8 @@ import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { getCandidate } from "@/lib/auth";
 import { scoreAttempt } from "@/lib/scoring/score-attempt";
+import { PII_CATEGORY_IDS } from "@/lib/pii";
+import { isPracticeClip, PRACTICE_SORT_ORDER } from "@/lib/practice";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
 const telemetrySchema = z.object({
@@ -10,11 +12,28 @@ const telemetrySchema = z.object({
   rewindCount: z.number().int().min(0),
   playbackSpeeds: z.array(z.number().min(0.5).max(2)).max(20),
   blurCount: z.number().int().min(0),
+  pasteCount: z.number().int().min(0).default(0),
+  pastedChars: z.number().int().min(0).default(0),
+  quizAnswers: z.array(z.number().int().min(-1).max(3)).max(10).optional(),
+  pauseCount: z.number().int().min(0).optional(),
+  longestPlayRun: z.number().min(0).finite().optional(),
+  keystrokes: z.number().int().min(0).optional(),
+  largeInserts: z.number().int().min(0).optional(),
+  largeInsertChars: z.number().int().min(0).optional(),
+  heard: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).max(1000).optional(),
+  snapshots: z
+    .array(z.object({ t: z.number().int().min(0), heardTo: z.number().min(0), tail: z.string().max(500) }))
+    .max(200)
+    .optional(),
 });
 
 const inputSchema = z.object({
-  transcript: z.string().trim().min(1).max(100_000),
+  transcript: z.string().trim().max(100_000).default(""),
   telemetry: telemetrySchema,
+  piiTags: z
+    .array(z.object({ start: z.number().int().min(0), end: z.number().int().min(0), category: z.enum(PII_CATEGORY_IDS) }))
+    .max(500)
+    .optional(),
   reviewNotes: z.string().trim().max(10_000).optional(),
 });
 
@@ -35,10 +54,14 @@ export async function POST(
   const supabase = getSupabaseAdmin();
   const { data: clip } = await supabase
     .from("trial_clips")
-    .select("id,slug,sort_order,role")
+    .select("id,slug,sort_order,role,task_type")
     .eq("slug", slug)
     .maybeSingle();
   if (!clip) return NextResponse.json({ error: "Clip not found" }, { status: 404 });
+  const pii = clip.task_type === "pii";
+  if (pii ? !input.data.piiTags : !input.data.transcript) {
+    return NextResponse.json({ error: pii ? "Tags are required." : "A transcript is required." }, { status: 400 });
+  }
   if (clip.role === "qa" && (!input.data.reviewNotes || input.data.reviewNotes.length < 20)) {
     return NextResponse.json({ error: "Reviewer notes are required." }, { status: 400 });
   }
@@ -73,7 +96,8 @@ export async function POST(
     .update({
       submitted_at: submittedAt.toISOString(),
       active_seconds: activeSeconds,
-      transcript: input.data.transcript,
+      transcript: pii ? null : input.data.transcript,
+      pii_tags: pii ? input.data.piiTags : null,
       telemetry: input.data.telemetry,
       qa_review: clip.role === "qa" ? { notes: input.data.reviewNotes } : null,
     })
@@ -82,15 +106,23 @@ export async function POST(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Mark completion with a simple count query that avoids exposing reference data.
-  const { count: clipCount } = await supabase
+  if (isPracticeClip(clip.sort_order)) {
+    after(() => scoreAttempt(attempt.id));
+    return NextResponse.json({ ok: true, practice: true });
+  }
+
+  const { data: realClips } = await supabase
     .from("trial_clips")
-    .select("id", { count: "exact", head: true })
-    .eq("role", clip.role);
+    .select("id")
+    .eq("role", clip.role)
+    .gt("sort_order", PRACTICE_SORT_ORDER);
+  const realClipIds = (realClips ?? []).map((item) => item.id);
+  const clipCount = realClipIds.length;
   const { count: submittedCount } = await supabase
     .from("trial_attempts")
     .select("id", { count: "exact", head: true })
     .eq("assessment_id", assessment.id)
+    .in("clip_id", realClipIds)
     .not("submitted_at", "is", null);
   if (clipCount && submittedCount === clipCount) {
     await supabase

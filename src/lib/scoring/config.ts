@@ -5,11 +5,15 @@ export const ANNOTATOR_SCORE_WEIGHTS = {
   format: 0.1,
 } as const;
 
+// For QA, "errors" is the share of planted errors fixed, "transcription" is whether
+// the rest of the transcript was left at least as accurate, and "format" is the
+// quality of the reviewer notes.
 export const QA_SCORE_WEIGHTS = {
-  transcription: 0.35,
+  errors: 0.45,
+  transcription: 0.15,
   speaker: 0.1,
   pace: 0.1,
-  format: 0.45,
+  format: 0.2,
 } as const;
 
 // Haiku is sufficient for this constrained JSON rubric and costs roughly half

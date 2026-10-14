@@ -1,19 +1,35 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f7f7fd;
+  --foreground: #0f0f2d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --color-brand-50: #f1f0fe;
+  --color-brand-100: #e4e2fd;
+  --color-brand-200: #cdc9fb;
+  --color-brand-300: #aca4f7;
+  --color-brand-400: #8b7ef2;
+  --color-brand-500: #6f5cec;
+  --color-brand-600: #5b45e0;
+  --color-brand-700: #4c37c5;
+  --color-brand-800: #3e2fa0;
+  --color-brand-900: #352b7e;
 }
 
 body {
-  background: var(--background);
   color: var(--foreground);
-  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgb(205 201 251 / 0.55), transparent 70%),
+    linear-gradient(rgb(91 69 224 / 0.035) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgb(91 69 224 / 0.035) 1px, transparent 1px) 0 0 / 48px 48px,
+    var(--background);
+  background-attachment: fixed;
 }
 
 button, input, textarea, select {
@@ -24,14 +40,61 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
-.control-button {
-  border-radius: 0.5rem;
-  border: 1px solid #cbd5e1;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 500;
+@layer components {
+  .card {
+    @apply rounded-2xl bg-white shadow-[0_1px_2px_rgb(15_15_45/0.04),0_12px_40px_-12px_rgb(91_69_224/0.18)] ring-1 ring-brand-100/70;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 font-medium text-white shadow-sm shadow-brand-600/25 transition hover:bg-brand-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-[0.98] disabled:opacity-50;
+  }
+
+  .control-button {
+    @apply grid size-10 place-items-center rounded-full text-slate-600 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-700 hover:ring-brand-200 active:scale-95;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none transition placeholder:text-slate-400 focus:border-brand-400 focus:ring-4 focus:ring-brand-100;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-brand-600;
+  }
+
+  kbd {
+    @apply inline-flex min-w-6 items-center justify-center rounded-md border border-slate-200 border-b-2 bg-white px-1.5 py-0.5 font-sans text-[11px] font-medium text-slate-600;
+  }
 }
 
-.control-button:hover {
-  background: #f1f5f9;
+input[type="range"].scrubber {
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    var(--color-brand-500) var(--progress, 0%),
+    var(--color-brand-100) var(--progress, 0%)
+  );
+}
+
+input[type="range"].scrubber::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: white;
+  border: 3px solid var(--color-brand-600);
+  box-shadow: 0 1px 4px rgb(91 69 224 / 0.4);
+}
+
+input[type="range"].scrubber::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: white;
+  border: 3px solid var(--color-brand-600);
 }
