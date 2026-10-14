@@ -157,12 +157,13 @@ export function scorePii(document: PiiDocument, entities: PiiEntity[], tags: Pii
 export const PII_PRACTICE_SOURCE = `[00:00] Agent: Hi, you're through to {{NAME|Sam}} at Northwind Support.
 [00:03] Customer: Hi {{NAME|Sam}}, I'm {{NAME|Lena Ortiz}}. My order {{ORDER|NW-30917}} never arrived.
 [00:09] Agent: Sorry to hear that. Can I get a phone number in case we get cut off?
-[00:12] Customer: Sure, it's {{PHONE|212-555-0147}}.
-[00:15] Agent: Thanks. I'll send the tracking link to {{EMAIL|lena.ortiz@example.com}}.`;
+[00:12] Customer: Sure, it's {{PHONE|two one two, five five five, zero one four seven}}.
+[00:17] Agent: Thanks. I'll send the tracking link to {{EMAIL|lena.ortiz@example.com}}.`;
 
 export const PII_RULES = [
-  "Tag every person's name, including the agent's and anyone mentioned in passing.",
-  "Tag phone numbers, email addresses, order numbers, and card digits.",
+  "Tag every person's name, including the agent's, spelled-out names, and anyone mentioned in passing. A word is only a name when it refers to a person.",
+  "Tag phone numbers, email addresses, order numbers, and card digits, including when they're read out in words.",
+  "If someone corrects themselves, tag both versions.",
   "Tag the whole street address in one selection, including apartment and city.",
-  "Don't tag company names, products, card brands (like Visa), dates, or times.",
+  "Don't tag company names, products or model numbers, prices, card brands (like Visa), dates, or times.",
 ];
