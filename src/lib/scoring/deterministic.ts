@@ -16,6 +16,23 @@ const SLANG: Record<string, string> = {
   gonna: "going to",
   gotta: "got to",
   kinda: "kind of",
+  ok: "okay",
+};
+
+// AMI references use British spelling; candidates shouldn't lose accuracy for US spelling.
+const BRITISH_STEMS = ["characteris", "organis", "realis", "recognis", "apologis", "prioritis", "summaris", "minimis", "maximis", "customis", "visualis", "standardis", "categoris", "finalis"];
+const BRITISH_WORDS: Record<string, string> = {
+  colour: "color",
+  colours: "colors",
+  favourite: "favorite",
+  favourites: "favorites",
+  behaviour: "behavior",
+  centre: "center",
+  programme: "program",
+  analyse: "analyze",
+  analysed: "analyzed",
+  travelling: "traveling",
+  grey: "gray",
 };
 
 // Clean verbatim drops fillers, but the reference transcripts keep them, so they
@@ -37,6 +54,9 @@ export function normalizeText(text: string) {
   for (const [short, expanded] of Object.entries(SLANG)) {
     normalized = normalized.replace(new RegExp(`\\b${short}\\b`, "g"), expanded);
   }
+  normalized = normalized
+    .replace(new RegExp(`\\b(${BRITISH_STEMS.join("|")})(e|ed|es|ing|ation|ations)\\b`, "g"), (_, stem: string, ending: string) => `${stem.slice(0, -1)}z${ending}`)
+    .replace(/\b[a-z]+\b/g, (word) => BRITISH_WORDS[word] ?? word);
   return normalized
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
@@ -93,11 +113,12 @@ export function wordErrorRate(reference: string, candidate: string) {
 }
 
 // Careful multi-speaker transcription typically takes four to six times the
-// audio length, so annotator marks run to 5x and taper to zero at 12x. QA review
-// replays audio to verify each line, so it gets a longer runway.
+// audio length; short crosstalk-heavy clips and a first session in an unfamiliar
+// tool run slower, so the taper is long. QA review replays audio to verify each
+// line, so full marks extend further.
 const PACE_LIMITS = {
-  annotator: { full: 5, zero: 12 },
-  qa: { full: 8, zero: 15 },
+  annotator: { full: 6, zero: 20 },
+  qa: { full: 8, zero: 20 },
 } as const;
 
 export function paceScore(activeSeconds: number, durationSeconds: number, role: "annotator" | "qa" = "annotator") {

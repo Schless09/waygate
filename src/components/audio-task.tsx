@@ -100,6 +100,51 @@ export function AudioTask({
     return () => window.clearInterval(timer);
   }, [storageKey, transcript]);
 
+  // Telemetry lives in memory, so it is mirrored to storage to survive reloads;
+  // otherwise a restored draft looks like text that was never typed or heard.
+  const telemetryKey = attempt?.started_at ? `waygate-telemetry-${clip.slug}-${attempt.started_at}` : null;
+  const restoredTelemetryRef = useRef(false);
+  const saveTelemetry = useCallback(() => {
+    if (!telemetryKey || !restoredTelemetryRef.current) return;
+    const playing = playStartedRef.current !== null ? (performance.now() - playStartedRef.current) / 1000 : 0;
+    try {
+      localStorage.setItem(
+        telemetryKey,
+        JSON.stringify({
+          telemetry: { ...telemetryRef.current, totalPlayTime: telemetryRef.current.totalPlayTime + playing },
+          heard: [...heardRef.current],
+          snapshots: snapshotsRef.current,
+        }),
+      );
+    } catch {}
+  }, [telemetryKey]);
+
+  useEffect(() => {
+    if (!telemetryKey || restoredTelemetryRef.current) return;
+    restoredTelemetryRef.current = true;
+    try {
+      const saved = JSON.parse(localStorage.getItem(telemetryKey) ?? "null") as {
+        telemetry: Telemetry;
+        heard: number[];
+        snapshots: TranscriptSnapshot[];
+      } | null;
+      if (saved) {
+        telemetryRef.current = { ...saved.telemetry, reloads: (saved.telemetry.reloads ?? 0) + 1 };
+        heardRef.current = new Set(saved.heard);
+        snapshotsRef.current = saved.snapshots;
+      }
+    } catch {}
+  }, [telemetryKey]);
+
+  useEffect(() => {
+    const timer = window.setInterval(saveTelemetry, 5000);
+    window.addEventListener("pagehide", saveTelemetry);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("pagehide", saveTelemetry);
+    };
+  }, [saveTelemetry]);
+
   useEffect(() => {
     const onBlur = () => {
       telemetryRef.current.blurCount += 1;
@@ -299,6 +344,7 @@ export function AudioTask({
     }
     try {
       localStorage.removeItem(storageKey);
+      if (telemetryKey) localStorage.removeItem(telemetryKey);
     } catch {}
     router.push(body.practice ? `/practice?role=${mode}` : body.complete ? `/done?role=${mode}` : `/task/${body.nextSlug}`);
     router.refresh();

@@ -61,7 +61,10 @@ format_score measures the quality of the reviewer notes and of any edits beyond 
 - Edits beyond the planted errors that bring the transcript closer to the reference are good; edits that move it away are bad. The clip edges can cut speech mid-word, so edits to the first or last line are judgment calls, not errors.
 - Gibberish, generic, or non-actionable notes score at most 20.
 - A change counts as a correction only if the line differs from the original transcript. Base strengths and weaknesses on what the candidate actually changed and wrote.`
-    : `This is an annotator assessment. format_score measures timestamp format and accuracy, appropriate bracket tags, speaker-turn formatting, and clean-verbatim adherence.`;
+    : `This is an annotator assessment. format_score measures timestamp accuracy, appropriate bracket tags, speaker-turn formatting, and clean-verbatim adherence.
+- The required timestamp format is [MM:SS] at the start of each turn; never penalize it or ask for another format.
+- Misheard words, spelling, and British vs US spelling are scored separately by word error rate; do not deduct for them in format_score or list them as format problems.
+- A trailing dash or em-dash for cut-off speech is acceptable.`;
   const qaContext = qa
     ? `
 Original transcript given to the candidate:

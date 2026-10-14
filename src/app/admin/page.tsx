@@ -62,9 +62,14 @@ export default async function AdminPage({
     const attempts = allAttempts.filter((attempt) => !isPracticeClip(one(attempt.clip)?.sort_order ?? 0));
     const practice = allAttempts.find((attempt) => isPracticeClip(one(attempt.clip)?.sort_order ?? 0));
     const candidate = one(assessment.candidate);
-    const scores = attempts
-      .map((attempt) => one(attempt.score)?.total_score)
-      .filter((value): value is number => value !== null && value !== undefined);
+    // The PII task is short, so it counts half as much as an audio clip.
+    const weighted = attempts
+      .map((attempt) => ({
+        score: one(attempt.score)?.total_score,
+        weight: one(attempt.clip)?.task_type === "pii" ? 0.5 : 1,
+      }))
+      .filter((item): item is { score: number; weight: number } => item.score !== null && item.score !== undefined);
+    const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
     const status = attempts.some((attempt) => one(attempt.score)?.error)
       ? "error"
       : attempts.length && attempts.every((attempt) => one(attempt.score)?.scored_at)
@@ -95,7 +100,7 @@ export default async function AdminPage({
       practice,
       quiz,
       integrity,
-      overall: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
+      overall: totalWeight ? weighted.reduce((sum, item) => sum + item.score * item.weight, 0) / totalWeight : null,
       status,
     };
   });

@@ -14,6 +14,7 @@ export type Telemetry = {
   largeInsertChars?: number;
   heard?: [number, number][];
   snapshots?: TranscriptSnapshot[];
+  reloads?: number;
 };
 
 export type TranscriptSnapshot = {
