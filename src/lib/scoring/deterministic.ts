@@ -93,18 +93,25 @@ export function wordErrorRate(reference: string, candidate: string) {
 }
 
 // Careful multi-speaker transcription typically takes four to six times the
-// audio length, so full marks run to 5x and taper to zero at 12x.
-export function paceScore(activeSeconds: number, durationSeconds: number) {
-  const ratio = durationSeconds > 0 ? activeSeconds / durationSeconds : 12;
+// audio length, so annotator marks run to 5x and taper to zero at 12x. QA review
+// replays audio to verify each line, so it gets a longer runway.
+const PACE_LIMITS = {
+  annotator: { full: 5, zero: 12 },
+  qa: { full: 8, zero: 15 },
+} as const;
+
+export function paceScore(activeSeconds: number, durationSeconds: number, role: "annotator" | "qa" = "annotator") {
+  const { full, zero } = PACE_LIMITS[role];
+  const ratio = durationSeconds > 0 ? activeSeconds / durationSeconds : zero;
   const score =
     ratio < 0.5
       ? 0
       : ratio < 1
         ? ((ratio - 0.5) / 0.5) * 100
-        : ratio <= 5
+        : ratio <= full
           ? 100
-          : ratio >= 12
+          : ratio >= zero
             ? 0
-            : ((12 - ratio) / 7) * 100;
+            : ((zero - ratio) / (zero - full)) * 100;
   return { ratio, score };
 }

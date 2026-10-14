@@ -8,6 +8,7 @@ import { integrityReport } from "@/lib/integrity";
 import { piiCategory, type PiiResult } from "@/lib/pii";
 import { isPracticeClip, realClipNumber } from "@/lib/practice";
 import { quizScore, tagUsage, timestampAccuracy } from "@/lib/quality-checks";
+import type { QaChecks } from "@/lib/scoring/qa-checks";
 import type { ReferenceUtterance, Telemetry } from "@/lib/types";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
@@ -142,6 +143,7 @@ export default async function CandidateDetail({
             );
           }
           const feedback = (score?.claude_feedback ?? {}) as Record<string, unknown>;
+          const qaChecks = (feedback.qa_checks as QaChecks | undefined) ?? null;
           const telemetry = attempt.telemetry as Partial<Telemetry> | null;
           const utterances = (clip?.reference_utterances ?? []) as ReferenceUtterance[];
           const transcript = attempt.transcript ?? "";
@@ -167,12 +169,13 @@ export default async function CandidateDetail({
                 {attempt.submitted_at && <RescoreButton attemptId={attempt.id} />}
               </div>
               {score?.error && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{score.error}</p>}
-              <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <dl className={`mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 ${qaChecks ? "lg:grid-cols-7" : "lg:grid-cols-6"}`}>
                 {[
-                  ["Transcription", scoreValue(score?.transcription_score)],
+                  ...(qaChecks ? [["Planted errors fixed", `${qaChecks.caught}/${qaChecks.total}`]] : []),
+                  [qaChecks ? "Accuracy kept" : "Transcription", scoreValue(score?.transcription_score)],
                   ["Speaker", scoreValue(score?.speaker_score)],
                   ["Pace", scoreValue(score?.pace_score)],
-                  ["Format", scoreValue(score?.format_score)],
+                  [qaChecks ? "Review notes" : "Format", scoreValue(score?.format_score)],
                   ["WER", scoreValue(score?.wer)],
                   ["Pace ratio", scoreValue(score?.pace_ratio)],
                 ].map(([label, value]) => <div key={label} className="rounded-xl bg-brand-50/60 p-3 ring-1 ring-brand-100"><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}
@@ -217,6 +220,25 @@ export default async function CandidateDetail({
                 <div className="rounded-lg bg-slate-50 p-4 text-sm"><strong>Speaker notes</strong><p className="mt-2 whitespace-pre-wrap text-slate-700">{String(feedback.notes ?? "—")}</p></div>
                 <div className="rounded-lg bg-slate-50 p-4 text-sm"><strong>Format notes</strong><p className="mt-2 whitespace-pre-wrap text-slate-700">{String(feedback.format_notes ?? "—")}</p></div>
               </div>
+              {qaChecks && (
+                <div className="mt-5 rounded-lg border border-slate-200 p-4 text-sm">
+                  <strong>Planted errors</strong>
+                  <ul className="mt-3 space-y-2">
+                    {qaChecks.checks.map((check) => (
+                      <li key={`${check.type}-${check.turn}`} className="flex items-start gap-3">
+                        <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${check.fixed ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+                          {check.fixed ? "Fixed" : "Missed"}
+                        </span>
+                        <span>
+                          <span className="font-medium">Turn {check.turn}: {check.detail}.</span>{" "}
+                          <span className="text-slate-600">{check.reason}.</span>
+                          {check.line && <span className="mt-0.5 block font-mono text-xs text-slate-500">{check.line}</span>}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {assessment?.role === "qa" && (
                 <div className="mt-5 rounded-lg border border-slate-200 p-4 text-sm">
                   <strong>Candidate reviewer notes</strong>

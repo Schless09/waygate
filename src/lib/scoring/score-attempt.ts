@@ -11,6 +11,7 @@ import {
 import { parsePiiSource, scorePii, type PiiSpan } from "@/lib/pii";
 import type { ReferenceUtterance } from "@/lib/types";
 import { paceScore, transcriptCoverage, trimToReferenceWindow, wordErrorRate } from "./deterministic";
+import { accuracyKeptScore, checkSeededErrors, type QaChecks, type SeededError } from "./qa-checks";
 
 // Reference speaker IDs are arbitrary corpus labels; relabel them A, B, C, D in
 // order of first appearance so they match the convention candidates are told to use.
@@ -48,19 +49,30 @@ async function evaluateWithClaude(
   candidate: string,
   role: string,
   review: unknown,
-  errorKey: unknown,
+  qa: { source: string; checks: QaChecks } | null,
 ) {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const roleGuidance =
-    role === "qa"
-      ? `This is a QA review assessment. format_score measures the REVIEWER'S WORK, not the quality already present in the supplied flawed transcript.
-- Compare the candidate's corrected transcript and reviewer notes with the seeded error list.
-- Give credit for correctly fixing and explicitly explaining seeded errors, accurate severity judgments, and actionable feedback.
-- Do not award points merely because the prefilled transcript already has valid timestamps, labels, or mostly correct words.
-- Gibberish, generic, or non-actionable reviewer notes must receive format_score 0.
-- If the candidate leaves all seeded errors uncorrected and unidentified, format_score must be 0.
-- Base strengths and weaknesses on the candidate's review actions.`
-      : `This is an annotator assessment. format_score measures timestamp format and accuracy, appropriate bracket tags, speaker-turn formatting, and clean-verbatim adherence.`;
+  const roleGuidance = qa
+    ? `This is a QA review assessment. The candidate was given the ORIGINAL TRANSCRIPT, which contains planted errors, and returned a corrected transcript plus reviewer notes. Planted-error fixes were already checked by script (results above); do not re-score them.
+format_score measures the quality of the reviewer notes and of any edits beyond the planted errors:
+- Specific: notes point to lines, timestamps, or speakers rather than only naming categories (e.g. "typos, wrong speakers").
+- Accurate: the problems the notes report really exist when the original transcript is compared with the reference.
+- Actionable: another annotator could fix the issue from the note alone.
+- Edits beyond the planted errors that bring the transcript closer to the reference are good; edits that move it away are bad. The clip edges can cut speech mid-word, so edits to the first or last line are judgment calls, not errors.
+- Gibberish, generic, or non-actionable notes score at most 20.
+- A change counts as a correction only if the line differs from the original transcript. Base strengths and weaknesses on what the candidate actually changed and wrote.`
+    : `This is an annotator assessment. format_score measures timestamp format and accuracy, appropriate bracket tags, speaker-turn formatting, and clean-verbatim adherence.`;
+  const qaContext = qa
+    ? `
+Original transcript given to the candidate:
+${qa.source}
+
+Script check of planted errors (${qa.checks.caught} of ${qa.checks.total} fixed):
+${JSON.stringify(qa.checks.checks.map(({ type, turn, detail, fixed, reason }) => ({ type, turn, detail, fixed, reason })))}
+
+Reviewer notes: ${JSON.stringify(review)}
+`
+    : "";
   const prompt = `Reference utterances (speaker labels and seconds):
 ${JSON.stringify(reference)}
 
@@ -68,9 +80,7 @@ Candidate transcript:
 ${candidate}
 
 Assessment role: ${role}
-Reviewer notes (QA only): ${JSON.stringify(review)}
-Seeded QA errors (QA only): ${JSON.stringify(errorKey)}
-
+${qaContext}
 Evaluate speaker attribution. Speaker letters are arbitrary: find the best one-to-one mapping from candidate labels to reference labels and score attribution after applying it. A consistent relabeling (for example the candidate's C is the reference's D) is NOT an error and must not be penalized or listed as a weakness. Estimate the percentage of words assigned to the correct speaker after mapping, verify the speaker count, and count missed and false turn changes.
 Clean verbatim is required, so omitted fillers (um, uh, mm-hmm) are correct and must not be counted as missed words or turns. Only short back-channel turns that contain real words (for example "okay", "yeah") count as missed turns.
 ${roleGuidance}
@@ -142,15 +152,17 @@ export async function scoreAttempt(attemptId: string) {
   const wer = Math.min(trimmedWer, fullWer);
   const candidateTranscript = trimmedWer <= fullWer ? trimmedTranscript : fullTranscript;
   const coverage = transcriptCoverage(clip.reference_text, candidateTranscript);
-  const initialQaWer =
-    assessment?.role === "qa" && clip.qa_source_transcript
-      ? wordErrorRate(clip.reference_text, clip.qa_source_transcript)
+  const role = assessment?.role === "qa" ? "qa" : "annotator";
+  const qaSource = role === "qa" ? (clip.qa_source_transcript ?? "") : null;
+  const qaChecks =
+    qaSource !== null
+      ? checkSeededErrors(fullTranscript, utterances, (clip.qa_error_key ?? []) as SeededError[])
       : null;
   const transcriptionScore =
-    initialQaWer && initialQaWer > 0
-      ? Math.max(0, Math.min(100, (100 * (initialQaWer - wer)) / initialQaWer))
+    qaSource !== null
+      ? accuracyKeptScore(wer, wordErrorRate(clip.reference_text, qaSource))
       : Math.max(0, 100 * (1 - wer));
-  const pace = paceScore(attempt.active_seconds, clip.duration_seconds);
+  const pace = paceScore(attempt.active_seconds, clip.duration_seconds, role);
 
   await supabase.from("trial_scores").upsert(
     {
@@ -168,11 +180,10 @@ export async function scoreAttempt(attemptId: string) {
     const feedback = await evaluateWithClaude(
       relabelByFirstAppearance(utterances),
       candidateTranscript,
-      assessment?.role ?? "annotator",
+      role,
       attempt.qa_review,
-      clip.qa_error_key,
+      qaSource !== null && qaChecks ? { source: qaSource, checks: qaChecks } : null,
     );
-    const role = assessment?.role ?? "annotator";
     const reviewNotes =
       attempt.qa_review &&
       typeof attempt.qa_review === "object" &&
@@ -205,13 +216,14 @@ export async function scoreAttempt(attemptId: string) {
           }
         : gradedFeedback;
     const paceCredit = Math.min(pace.score, coverageCap);
-    const weights =
-      role === "qa" ? QA_SCORE_WEIGHTS : ANNOTATOR_SCORE_WEIGHTS;
-    const total =
+    const shared = (weights: { transcription: number; speaker: number; pace: number; format: number }) =>
       transcriptionScore * weights.transcription +
       scoredFeedback.speaker_score * weights.speaker +
       paceCredit * weights.pace +
       scoredFeedback.format_score * weights.format;
+    const total = qaChecks
+      ? shared(QA_SCORE_WEIGHTS) + qaChecks.score * QA_SCORE_WEIGHTS.errors
+      : shared(ANNOTATOR_SCORE_WEIGHTS);
 
     const { error: saveError } = await supabase.from("trial_scores").upsert(
       {
@@ -223,7 +235,7 @@ export async function scoreAttempt(attemptId: string) {
         pace_ratio: pace.ratio,
         format_score: scoredFeedback.format_score,
         total_score: total,
-        claude_feedback: scoredFeedback,
+        claude_feedback: qaChecks ? { ...scoredFeedback, qa_checks: qaChecks } : scoredFeedback,
         scored_at: new Date().toISOString(),
         error: null,
       },

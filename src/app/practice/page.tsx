@@ -11,7 +11,13 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-type Feedback = { strengths?: string[]; weaknesses?: string[]; format_notes?: string; notes?: string };
+type Feedback = {
+  strengths?: string[];
+  weaknesses?: string[];
+  format_notes?: string;
+  notes?: string;
+  qa_checks?: { score: number };
+};
 
 export default async function PracticeResultsPage({
   searchParams,
@@ -74,12 +80,20 @@ export default async function PracticeResultsPage({
         ) : (
           <>
             <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {[
-                ["Overall", score?.total_score],
-                [isQa ? "Corrections" : "Accuracy", score?.transcription_score],
-                ["Speakers", score?.speaker_score],
-                [isQa ? "Review notes" : "Format", score?.format_score],
-              ].map(([label, value]) => (
+              {(isQa
+                ? [
+                    ["Overall", score?.total_score],
+                    ["Planted errors fixed", feedback.qa_checks?.score ?? null],
+                    ["Accuracy kept", score?.transcription_score],
+                    ["Review notes", score?.format_score],
+                  ]
+                : [
+                    ["Overall", score?.total_score],
+                    ["Accuracy", score?.transcription_score],
+                    ["Speakers", score?.speaker_score],
+                    ["Format", score?.format_score],
+                  ]
+              ).map(([label, value]) => (
                 <div key={label as string} className="rounded-xl bg-brand-50/60 p-4 ring-1 ring-brand-100">
                   <dt className="text-xs text-slate-500">{label}</dt>
                   <dd className="mt-2 text-lg"><ScorePill value={value as number | null} /></dd>
